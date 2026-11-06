@@ -1,4 +1,4 @@
-/** Pure scheduling functions, independent of the browser / AI provider. */
+/** Deterministic scheduling functions, with no network or AI dependency. */
 export function todayISO(now=new Date()) {return dateISO(now)}
 export function dateISO(d) {return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 export function parseISO(value) {if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;const [y,m,d]=value.split('-').map(Number);const out=new Date(y,m-1,d);return dateISO(out)===value?out:null}
@@ -11,23 +11,6 @@ export function extractDraft(nodes,edges){
  const lookup=new Map(tasks.map(t=>[t.sourceId,t]));for(const e of edges){const target=lookup.get(e.to);if(target&&lookup.has(e.from)&&e.from!==e.to&&!target.dependsOn.includes(e.from))target.dependsOn.push(e.from)}
  return tasks;
 }
-export function normalizeAiDraft(aiTasks,nodes,edges){
- if(!Array.isArray(aiTasks))throw new Error('認識結果の形式が不正です');
- const allowed=new Map(nodes.filter(n=>n.type!=='pen').map(n=>[n.id,n]));
- const used=new Set();const output=[];
- for(const item of aiTasks.slice(0,80)){
-  const sourceId=String(item.sourceId||'');if(!allowed.has(sourceId)||used.has(sourceId))continue;used.add(sourceId);
-  const title=String(item.title||'').trim().slice(0,100);if(!title)continue;
-  const parsedDuration=Number(item.duration);const validDuration=Number.isInteger(parsedDuration)&&parsedDuration>=1&&parsedDuration<=180;
-  const confidence=Math.max(0,Math.min(1,Number(item.confidence)||0));
-  const dependsOn=Array.isArray(item.dependsOn)?item.dependsOn.filter(v=>typeof v==='string'&&v!==sourceId):[];
-  const validStartDate=parseISO(String(item.startDate||''));
-  output.push({id:sourceId,sourceId,title,duration:validDuration?parsedDuration:1,dependsOn,startDate:validStartDate?dateISO(validStartDate):'',confidence,reason:String(item.reason||'').slice(0,240),assignee:String(item.assignee||'').slice(0,60),needsReview:!validDuration||confidence<0.85||!validStartDate&&Boolean(item.startDate)});
- }
- const ids=new Set(output.map(t=>t.id));const edgesSet=new Set(edges.map(e=>`${e.from}:${e.to}`));
- for(const t of output){t.dependsOn=[...new Set(t.dependsOn)].filter(id=>ids.has(id));if(t.dependsOn.some(id=>!edgesSet.has(`${id}:${t.id}`))){t.needsReview=true;t.reason=[t.reason,'AIが推定した依存関係を要確認'].filter(Boolean).join(' / ')}}
- return output;
-}
 export function scheduleTasks(rawTasks, projectStartISO){
  const projectStart=parseISO(projectStartISO)?projectStartISO:todayISO();
  const valid=rawTasks.map(t=>({...t,dependsOn:[...new Set(Array.isArray(t.dependsOn)?t.dependsOn:[])]}));
@@ -37,22 +20,5 @@ export function scheduleTasks(rawTasks, projectStartISO){
  const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const out={...t,duration,start,end:addDays(start,duration-1),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
  for(const t of valid)visit(t.id);
  return {tasks:valid.map(t=>resolved.get(t.id)).filter(Boolean),warnings,projectStart};
-}
-/** Merge nearby pen strokes into stable handwriting regions for vision analysis. */
-export function groupInkStrokes(nodes){
- const strokes=nodes.filter(n=>n.type==='pen'&&Array.isArray(n.points)&&n.points.length>=2).map(n=>{
-  const xs=n.points.map(p=>Number(p[0])).filter(Number.isFinite),ys=n.points.map(p=>Number(p[1])).filter(Number.isFinite);
-  return xs.length&&ys.length?{id:n.id,minX:Math.min(...xs),maxX:Math.max(...xs),minY:Math.min(...ys),maxY:Math.max(...ys)}:null;
- }).filter(Boolean);
- const parent=strokes.map((_,i)=>i);function find(a){while(parent[a]!==a){parent[a]=parent[parent[a]];a=parent[a]}return a}
- for(let i=0;i<strokes.length;i++)for(let j=i+1;j<strokes.length;j++){
-  const a=strokes[i],b=strokes[j];const dx=Math.max(0,a.minX-b.maxX,b.minX-a.maxX),dy=Math.max(0,a.minY-b.maxY,b.minY-a.maxY);
-  if(dx<=32&&dy<=19)parent[find(j)]=find(i)
- }
- const groups=new Map();for(let i=0;i<strokes.length;i++){const k=find(i);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(strokes[i])}
- return [...groups.values()].map(group=>{
-  const id='ink_'+group.map(s=>s.id).sort()[0],x=Math.min(...group.map(s=>s.minX)),y=Math.min(...group.map(s=>s.minY));
-  return {id,type:'ink',x,y,w:Math.max(...group.map(s=>s.maxX))-x,h:Math.max(...group.map(s=>s.maxY))-y,text:'',strokeIds:group.map(s=>s.id)}
- });
 }
 export function scheduleToCSV(tasks){const h=['工程名','日数','開始日','終了日','先行工程','担当者','要確認'];const map=new Map(tasks.map(t=>[t.id,t.title]));const q=v=>'"'+String(v??'').replaceAll('"','""')+'"';return '\ufeff'+[h,...tasks.map(t=>[t.title,t.duration,t.start,t.end,t.dependsOn.map(d=>map.get(d)||d).join(' / '),t.assignee,t.needsReview?'要確認':''])].map(row=>row.map(q).join(',')).join('\r\n')+'\r\n'}
