@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {centeredNotePosition,reconnectTarget,shouldDeleteDetachedArrow} from '../src/canvas-actions.js';
+import {centeredNotePosition,reconnectTarget,shouldDeleteDetachedArrow,createRenovationTemplate} from '../src/canvas-actions.js';
 
 const tasks=[
  {id:'a',type:'task',x:0,y:0,w:100,h:70},
@@ -58,4 +58,17 @@ test('clicks, tiny moves and cancelled drags preserve the arrow',()=>{
 test('screen pixel deletion threshold is independent of zoom',()=>{
  assert.equal(shouldDeleteDetachedArrow('pointerup',{x:0,y:0},{x:14,y:0},false),true);
  assert.equal(shouldDeleteDetachedArrow('pointerup',{x:0,y:0},{x:13,y:0},false),false);
+});
+
+test('renovation template creates six editable tasks in dependency order with fresh IDs', () => {
+ let next=0;
+ const nextId=()=>String(++next);
+ const first=createRenovationTemplate(nextId,60,500);
+ const second=createRenovationTemplate(nextId,60,1000);
+ assert.equal(first.nodes.length,6);
+ assert.equal(first.edges.length,5);
+ assert.ok(first.nodes.every(node=>node.type==='task'&&node.y>=500&&node.duration>0));
+ assert.deepEqual(first.edges.map(({from,to})=>[from,to]),
+  first.nodes.slice(1).map((node,index)=>[first.nodes[index].id,node.id]));
+ assert.equal(new Set([...first.nodes,...first.edges,...second.nodes,...second.edges].map(item=>item.id)).size,22);
 });
