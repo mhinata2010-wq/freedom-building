@@ -1,51 +1,31 @@
-# Architecture and product boundaries
+# Architecture | no-API local scheduling
 
-## Objective
-
-Convert unstructured construction planning ideas into an editable draft. Freeform planning is the input surface, **not** the source of truth for final dates. Human review is mandatory because construction tasks can have safety and cost implications.
+## データフロー
 
 ```mermaid
 flowchart LR
-  A[SVG Freeform Board] --> B[Vector shape & arrow data]
-  A --> C[PNG screenshot]
-  B --> D[Local deterministic parser]
-  B --> E[Server-side vision+text model]
-  C --> E
-  D --> F[Candidate tasks]
-  E --> F
-  F --> G[Validation & user review]
-  G --> H[Dependency scheduler]
-  H --> I[Gantt & CSV export]
+  A[SVGキャンバス] --> B[工程カードとテキスト]
+  A --> C[明示的な接続矢印]
+  B --> D[ブラウザ内ルール解析]
+  C --> D
+  D --> E[工程ドラフト確認]
+  E --> F[日程・依存関係計算]
+  F --> G[ガント表示・CSV書き出し]
 ```
 
-### AI boundary
+- **外部API・AIなし。** 解析用のHTTP通信も認証キー管理も不要。
+- 解析対象は工程カードと日数が明示されたテキスト。手書き線や付箋は注釈として保持するが、自動工程変換しない。
+- 未指定の工期は暫定1日、`needsReview` として扱う。明示的な矢印だけを依存関係に変換する。
+- キャンバス操作と日程生成を分離し、工期・担当者・開始日・依存関係は生成後にユーザーが修正できる。
+- 工程間の循環依存は接続時に拒否し、スケジューラーでも警告する。
+- 計算は暦日。休日、天候、資材搬入、職人の重複リソースは今回未対応。
+- `localStorage` でブラウザ内に自動保存。デバイス間同期はない。JSONバックアップを推奨。
 
-- Browser data: task cards, text, sticky notes, pen strokes, explicit dependency arrows.
-- Handwriting: nearby pen strokes become deterministic `ink_...` regions. The AI is given region coordinates plus the canvas image; recognition is experimental and can fail. It is never presented as reliable OCR without evaluation.
-- API endpoint: `api/analyze.js` receives the image and normalized vector metadata; the model returns structured task fields. User-supplied canvas text is untrusted input, never system instructions.
-- Validation: source IDs must exist in submitted objects. AI-inferred dependencies (without an explicit arrow) are flagged for review; dates and durations are not silently confirmed.
-- Local fallback: not AI. Only task-card text, duration labels, and arrow relationships are parsed.
+## 受け入れ条件
 
-### Date semantics
-
-- All date calculations currently use calendar days (including weekends).
-- A successor begins the following day after its latest predecessor ends.
-- Explicit start dates can delay but not supersede a dependency. Conflicts are reported.
-- Resource leveling, public holidays, subcontractor availability, work shifts, rainy days, and CPM are **future scope**.
-
-## MVP acceptance checks
-
-- Drawing and movement works on desktop browser.
-- At least four sample cards generate an editable Gantt, respecting three arrows.
-- Deleting a connected card also deletes its edges.
-- No AI key produces a visibly labeled rule-based result, not a misleading AI success state.
-- Data exports to JSON and CSV; PNG and SVG downloads work.
-- Invalid AI source IDs cannot create tasks.
-- No API key appears in client-side code or repository.
-
-## Suggested follow-up validation (targets, not claims)
-
-1. Run usability tests with five site managers to check whether free drawing reduces input friction.
-2. Gather 30 consenting handwritten examples, label actual tasks/durations/dependencies, report precision, recall, and missing-source rate.
-3. Test inferred dependency acceptance/rejection rate before allowing any automatic date propagation.
-4. Add auth, durable quota/rate limits, database and audit logging before inviting external customers.
+1. APIキーを設定せず `npm run dev` から利用できる。
+2. `工程表を生成` を押した際、ブラウザから外部解析エンドポイントへの通信が発生しない。
+3. 工程カード4件＋矢印3本を含むサンプルが工程ドラフトとガントチャートになる。
+4. 接続矢印のドラッグ、カード移動時の追従、循環参照拒否が動作する。
+5. 自由描画は残し、手書き文字認識を提供していると誤解させない。
+6. CSV/JSON/PNG/SVG書き出しと編集・Undo/Redoが壊れない。
