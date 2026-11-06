@@ -29,3 +29,9 @@
 @media(max-width:850px) {.canvas-dock-row{padding:8px 8px 10px;min-height:70px}.canvas-toolbar{border-radius:12px}.canvas-toolbar .tool{min-width:39px}.dock-label{display:none}.canvas-toolbar .tool{height:40px}}
 @media(max-width:520px) {.canvas-toolbar .tool{min-width:36px;flex:none;width:36px}.dock-controls{padding-left:3px}.dock-action{width:29px;height:35px}.dock-resize{width:12px}.canvas-toolbar{padding:5px}}
 @media(prefers-reduced-motion:reduce){.canvas-toolbar,.canvas-toolbar .tool,.dock-action,.svg-node .node-connector-handle{transition:none}}
+
+@media (pointer:coarse) {
+  .zoom-control{right:8px;bottom:8px}
+  .zoom-control button{min-width:44px;min-height:44px;touch-action:manipulation}
+  .canvas-bottom-left{display:none}
+}

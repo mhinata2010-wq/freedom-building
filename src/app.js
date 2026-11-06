@@ -88,7 +88,80 @@ function renderSelectedArrowHandle(){
   board.setPointerCapture(ev.pointerId);renderEdges();
  });
 }
-function selectDrawable(e,n){if(e.button!==0)return;e.stopPropagation();if(state.tool==='arrow'){if(n.type==='pen'){toast('ペン線には工程をつなげません');return}if(!state.edgeFrom){state.edgeFrom=n.id;toast('次に接続先のカードをクリック')}else{const from=state.edgeFrom;state.edgeFrom=null;if(from!==n.id&&!state.edges.some(edge=>edge.from===from&&edge.to===n.id)){mutate(()=>state.edges.push({id:id(),from,to:n.id}));toast('工程の依存関係を追加しました')}}render();return}
+const canvasTouches=new Map();
+let pinch=null, touchNavigation=false, pendingTouch=null;
+
+function finishTap(event,action){
+ if(event.pointerType==='touch'){
+  pendingTouch={id:event.pointerId,action};
+  board.setPointerCapture(event.pointerId);
+ }else action();
+}
+
+function cancelCanvasEdit(){
+ const drag=state.drag;
+ state.drag=null;
+ pendingTouch=null;
+ state.edgeFrom=null;
+ if(drag?.before)Object.assign(state,JSON.parse(drag.before));
+ render();
+}
+
+function touchGeometry(){
+ const [a,b]=canvasTouches.values();
+ return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y))};
+}
+
+function capturePinch(){
+ pinch=canvasTouches.size===2?{...touchGeometry(),zoom:state.zoom,panX:state.panX,panY:state.panY}:null;
+}
+
+function handleCanvasTouch(event){
+ if(event.pointerType!=='touch')return;
+ const id=event.pointerId;
+ if(event.type==='pointerdown'){
+  canvasTouches.set(id,getScreenPoint(event));
+  board.setPointerCapture(id);
+  if(canvasTouches.size<2&&!touchNavigation)return;
+  if(!touchNavigation){
+   touchNavigation=true;
+   cancelCanvasEdit();
+  }
+  capturePinch();
+ }else if(!canvasTouches.has(id))return;
+ else if(event.type==='pointermove'){
+  canvasTouches.set(id,getScreenPoint(event));
+  if(!touchNavigation)return;
+  if(pinch){
+   const point=touchGeometry();
+   const zoom=Math.max(.25,Math.min(2.5,pinch.zoom*point.distance/pinch.distance));
+   const ratio=zoom/pinch.zoom;
+   state.panX=point.x-(pinch.x-pinch.panX)*ratio;
+   state.panY=point.y-(pinch.y-pinch.panY)*ratio;
+   state.zoom=zoom;
+   transform();
+  }
+ }else{
+  canvasTouches.delete(id);
+  if(!touchNavigation){
+   if(pendingTouch?.id===id){
+    const {action}=pendingTouch;
+    pendingTouch=null;
+    if(event.type==='pointerup')action();
+   }
+   if(event.type==='pointercancel'){
+    cancelCanvasEdit();
+    event.stopImmediatePropagation();
+   }
+   return;
+  }
+  if(!canvasTouches.size)touchNavigation=false;
+  capturePinch();
+ }
+ event.stopImmediatePropagation();
+}
+
+function selectDrawable(e,n){if(e.button!==0)return;e.stopPropagation();if(state.tool==='arrow'){finishTap(e,()=>{if(n.type==='pen'){toast('ペン線には工程をつなげません');return}if(!state.edgeFrom){state.edgeFrom=n.id;toast('次に接続先のカードをクリック')}else{const from=state.edgeFrom;state.edgeFrom=null;if(from!==n.id&&!state.edges.some(edge=>edge.from===from&&edge.to===n.id)){mutate(()=>state.edges.push({id:id(),from,to:n.id}));toast('工程の依存関係を追加しました')}}render()});return}
  if(state.tool!=='select')return;state.selected=n.id;const pt=toWorld(e);state.drag={mode:'node',nodeId:n.id,start:pt,origin:{x:n.x,y:n.y},before:serialize()};board.setPointerCapture(e.pointerId);render()}
 function changeArrowTarget(edgeId,toId){
  const result=reconnectTarget(state.edges,state.nodes,edgeId,toId);
@@ -131,7 +204,7 @@ function removeSelected(){if(!state.selected)return;mutate(()=>{state.nodes=stat
 function openInlineEdit(n){if(n.type==='pen')return;document.querySelector('.inline-editor')?.remove();const area=document.createElement('textarea');area.className='inline-editor';area.value=n.text;area.style.left=`${n.x*state.zoom+state.panX}px`;area.style.top=`${n.y*state.zoom+state.panY}px`;area.style.width=`${Math.max(125,n.w*state.zoom)}px`;area.style.height=`${Math.max(65,n.h*state.zoom)}px`;holder.appendChild(area);area.focus();area.select();let resolved=false;function finish(commitEdit){if(resolved)return;resolved=true;const newVal=area.value;area.remove();if(commitEdit&&n.text!==newVal)mutate(()=>{n.text=newVal.slice(0,500);const m=newVal.match(/(?:^|\n)\s*(\d+)\s*日/);if(m&&n.type==='task')n.duration=Math.max(1,Math.min(180,Number(m[1])))});else render()};area.addEventListener('blur',()=>finish(true));area.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Escape')finish(false);if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))finish(true)})}
 function fitBoard(){const rect=holder.getBoundingClientRect();if(!rect.width||!rect.height)return;const display=state.nodes.filter(n=>n.type!=='pen');if(!display.length){state.zoom=1;state.panX=rect.width/2-160;state.panY=rect.height/2-90;transform();return}const minX=Math.min(...display.map(n=>n.x),40),maxX=Math.max(...display.map(n=>n.x+n.w),800),minY=Math.min(...display.map(n=>n.y),50),maxY=Math.max(...display.map(n=>n.y+n.h),450);const w=maxX-minX,h=maxY-minY;state.zoom=Math.max(.35,Math.min(1.05,Math.min((rect.width-76)/w,(rect.height-100)/h)));state.panX=(rect.width-w*state.zoom)/2-minX*state.zoom;state.panY=(rect.height-h*state.zoom)/2-minY*state.zoom;transform()}
 function zoomTo(factor,cx,cy){const rect=board.getBoundingClientRect(),p={x:cx??rect.width/2,y:cy??rect.height/2};const next=Math.max(.25,Math.min(2.5,state.zoom*factor));state.panX=p.x-(p.x-state.panX)*next/state.zoom;state.panY=p.y-(p.y-state.panY)*next/state.zoom;state.zoom=next;transform()}
-function boardStart(e){if(e.button!==0&&e.button!==1)return;if(e.target.closest('.svg-node'))return;const isPan=state.tool==='hand'||state.space||e.button===1;const pt=toWorld(e);if(isPan){state.drag={mode:'pan',screen:getScreenPoint(e),origin:{x:state.panX,y:state.panY}};board.setPointerCapture(e.pointerId);return}if(state.tool==='pen'){const n={id:id(),type:'pen',points:[[pt.x,pt.y]],color:'#334155',stroke:3};state.drag={mode:'pen',nodeId:n.id,before:serialize()};state.nodes.push(n);board.setPointerCapture(e.pointerId);renderNodes();return}if(['task','note','text'].includes(state.tool)){newNode(state.tool,pt);return}if(state.tool==='arrow'){state.edgeFrom=null;renderEdges();return}state.selected=null;render()}
+function boardStart(e){if(e.button!==0&&e.button!==1)return;if(e.target.closest('.svg-node'))return;const isPan=state.tool==='hand'||state.space||e.button===1;const pt=toWorld(e);if(isPan){state.drag={mode:'pan',screen:getScreenPoint(e),origin:{x:state.panX,y:state.panY}};board.setPointerCapture(e.pointerId);return}if(state.tool==='pen'){const n={id:id(),type:'pen',points:[[pt.x,pt.y]],color:'#334155',stroke:3};state.drag={mode:'pen',nodeId:n.id,before:serialize()};state.nodes.push(n);board.setPointerCapture(e.pointerId);renderNodes();return}if(['task','note','text'].includes(state.tool)){const tool=state.tool;finishTap(e,()=>newNode(tool,pt));return}if(state.tool==='arrow'){state.edgeFrom=null;renderEdges();return}state.selected=null;render()}
 function boardMove(e){if(!state.drag)return;const d=state.drag;const p=toWorld(e);if(d.mode==='connect'||d.mode==='reconnect'){d.point=p;d.targetId=dropTarget(state.nodes,p,d.from)?.id||null;renderNodes();renderEdges();return}if(d.mode==='node'){const n=nodeById(d.nodeId);if(n){n.x=Math.round(d.origin.x+(p.x-d.start.x));n.y=Math.round(d.origin.y+(p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='resize'){const n=nodeById(d.nodeId);if(n){n.w=Math.max(100,Math.round(d.origin.w+p.x-d.start.x));n.h=Math.max(70,Math.round(d.origin.h+p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='pan'){const s=getScreenPoint(e);state.panX=d.origin.x+s.x-d.screen.x;state.panY=d.origin.y+s.y-d.screen.y;transform()}else if(d.mode==='pen'){const n=nodeById(d.nodeId);if(n){const last=n.points.at(-1);if(Math.hypot(last[0]-p.x,last[1]-p.y)>2){n.points.push([Math.round(p.x),Math.round(p.y)]);renderNodes();transform()}}}}
 function boardEnd(e){if(!state.drag)return;const d=state.drag;state.drag=null;
  if(d.mode==='reconnect'){
@@ -172,8 +245,10 @@ function editDraft(id){const t=state.draft.find(t=>t.id===id);if(!t)return;showM
 async function makeScreenshot(){const w=board.clientWidth,h=board.clientHeight;if(w<100||h<100)return null;try{const source=exportSvgString(true);const blob=new Blob([source],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);const img=new Image();const ok=await new Promise(r=>{img.onload=()=>r(true);img.onerror=()=>r(false);img.src=url});URL.revokeObjectURL(url);if(!ok)return null;const canvas=document.createElement('canvas');const scale=Math.min(1.1,1300/Math.max(w,h));canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/png')}catch{return null}}
 async function generate(){if(!state.nodes.some(n=>n.type!=='pen')){toast('工程カードやテキストをキャンバスに追加してください');return}const btns=[$('#aiButton'),$('#generateBtn')];btns.forEach(b=>{b.disabled=true;b.dataset.old=b.innerHTML;b.innerHTML=`${ico('sparkles')} 解析中…`});try{const screenshot=await makeScreenshot();const inkGroups=groupInkStrokes(state.nodes);const recognitionNodes=[...state.nodes,...inkGroups];const response=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nodes:recognitionNodes,edges:state.edges,image:screenshot})});if(!response.ok)throw new Error(`AI API ${response.status}`);const data=await response.json();const draft=normalizeAiDraft(data.tasks,recognitionNodes,state.edges);if(!draft.length)throw new Error('AIが工程を認識できませんでした');mutate(()=>{state.draft=draft.map(t=>({...t,confirmed:false}));state.mode='ai';state.stale=false});toast(`AIが${draft.length}工程を解析しました。内容を確認してください`)}catch(err){const draft=extractDraft(state.nodes,state.edges);mutate(()=>{state.draft=draft.map(t=>({...t,confirmed:false}));state.mode='rules';state.stale=false});toast(draft.length?`AIを利用できないため、文字と矢印から${draft.length}工程を抽出しました（ルール解析）`:'AIに接続できません。工程カードを追加してください')}finally{btns.forEach(b=>{b.disabled=false;b.innerHTML=b.dataset.old})}}
 function changeView(view){state.view=view;render()}
-function showGuide(){showModal('操作ガイド',`<p class="modal-note"><strong>V</strong> 選択・移動／<strong>H</strong> 手のひらで移動／<strong>R</strong> 工程カード／<strong>N</strong> 付箋／<strong>T</strong> テキスト／<strong>P</strong> 手書き／<strong>A</strong> 矢印で工程を接続。カードの四辺の青い点をドラッグしても接続できます。</p><p class="modal-note">カードをダブルクリックで文字編集。四隅の右下をドラッグでリサイズ。選択中に Delete で削除。⌘Z で戻る。スクロールで移動、⌘+スクロールで拡大・縮小。</p><p class="modal-note">解析時、OpenAI API が設定済みなら画像＋図形データを解析します。未設定時は<strong>ルール解析</strong>として、カードの文字・日数・矢印だけを使います。どちらも確定前に内容を確認してください。</p>`)}
-function wire(){injectIcons();initCanvasDock();board.addEventListener('pointerdown',boardStart);board.addEventListener('pointermove',boardMove);board.addEventListener('pointerup',boardEnd);board.addEventListener('pointercancel',boardEnd);board.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const p=getScreenPoint(e);zoomTo(e.deltaY<0?1.08:1/1.08,p.x,p.y)}else{state.panX-=e.deltaX;state.panY-=e.deltaY;transform()}},{passive:false});$$('[data-tool]').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));$('#undoBtn').addEventListener('click',undo);$('#redoBtn').addEventListener('click',redo);$('#zoomIn').addEventListener('click',()=>zoomTo(1.15));$('#zoomOut').addEventListener('click',()=>zoomTo(1/1.15));$('#zoomReset').addEventListener('click',fitBoard);$('#clearSelectionBtn').addEventListener('click',fitBoard);$('#newBoardBtn').addEventListener('click',()=>{setTool('task');toast('キャンバスをクリックして工程を配置')});$('#helpBtn').addEventListener('click',showGuide);$('#aiButton').addEventListener('click',generate);$('#generateBtn').addEventListener('click',generate);$('#canvasTab').addEventListener('click',()=>changeView('canvas'));$('#ganttTab').addEventListener('click',()=>changeView('gantt'));$('#openGanttBtn').addEventListener('click',()=>changeView('gantt'));$('#projectStart').addEventListener('change',e=>{if(parseISO(e.target.value))mutate(()=>state.projectStart=e.target.value)});$('#ganttCsv').addEventListener('click',()=>downloadFile('fieldnote-schedule.csv',scheduleToCSV(scheduleTasks(state.draft,state.projectStart).tasks),'text/csv;charset=utf-8'));$('#exportMenuBtn').addEventListener('click',openExportMenu);$('#modalClose').addEventListener('click',closeModal);$('#modalBackdrop').addEventListener('click',e=>{if(e.target===$('#modalBackdrop'))closeModal()});document.addEventListener('click',e=>{if(e.target?.id==='cancelReset')closeModal();if(e.target?.id==='confirmReset'){mutate(()=>Object.assign(state,demo()));closeModal();fitBoard();toast('サンプルを復元しました')}});
- document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modalBackdrop').classList.contains('hidden')){closeModal();return}const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable)return;if(e.key===' '&&!e.repeat){state.space=true;e.preventDefault();return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}if(e.key==='Delete'||e.key==='Backspace'){removeSelected();return}if(e.key==='Escape'){state.selected=null;setTool('select');return}if(e.ctrlKey||e.metaKey||e.altKey)return;const lookup={v:'select',h:'hand',r:'task',n:'note',t:'text',p:'pen',a:'arrow'};if(lookup[e.key.toLowerCase()])setTool(lookup[e.key.toLowerCase()])});document.addEventListener('keyup',e=>{if(e.key===' ')state.space=false});window.addEventListener('blur',()=>{state.space=false;boardEnd()});
+function showGuide(){showModal('操作ガイド',`<p class="modal-note"><strong>V</strong> 選択・移動／<strong>H</strong> 手のひらで移動／<strong>R</strong> 工程カード／<strong>N</strong> 付箋／<strong>T</strong> テキスト／<strong>P</strong> 手書き／<strong>A</strong> 矢印で工程を接続。カードの四辺の青い点をドラッグしても接続できます。</p><p class="modal-note">カードをダブルクリックで文字編集。四隅の右下をドラッグでリサイズ。選択中に Delete で削除。⌘Z で戻る。スクロールで移動、⌘+スクロールで拡大・縮小。タッチ画面では2本指で拡大・縮小と移動ができます。</p><p class="modal-note">解析時、OpenAI API が設定済みなら画像＋図形データを解析します。未設定時は<strong>ルール解析</strong>として、カードの文字・日数・矢印だけを使います。どちらも確定前に内容を確認してください。</p>`)}
+function wire(){injectIcons();initCanvasDock();
+ for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])board.addEventListener(type,handleCanvasTouch,true);
+ board.addEventListener('pointerdown',boardStart);board.addEventListener('pointermove',boardMove);board.addEventListener('pointerup',boardEnd);board.addEventListener('pointercancel',boardEnd);board.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||e.metaKey){const p=getScreenPoint(e);zoomTo(e.deltaY<0?1.08:1/1.08,p.x,p.y)}else{state.panX-=e.deltaX;state.panY-=e.deltaY;transform()}},{passive:false});$$('[data-tool]').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));$('#undoBtn').addEventListener('click',undo);$('#redoBtn').addEventListener('click',redo);$('#zoomIn').addEventListener('click',()=>zoomTo(1.15));$('#zoomOut').addEventListener('click',()=>zoomTo(1/1.15));$('#zoomReset').addEventListener('click',fitBoard);$('#clearSelectionBtn').addEventListener('click',fitBoard);$('#newBoardBtn').addEventListener('click',()=>{setTool('task');toast('キャンバスをクリックして工程を配置')});$('#helpBtn').addEventListener('click',showGuide);$('#aiButton').addEventListener('click',generate);$('#generateBtn').addEventListener('click',generate);$('#canvasTab').addEventListener('click',()=>changeView('canvas'));$('#ganttTab').addEventListener('click',()=>changeView('gantt'));$('#openGanttBtn').addEventListener('click',()=>changeView('gantt'));$('#projectStart').addEventListener('change',e=>{if(parseISO(e.target.value))mutate(()=>state.projectStart=e.target.value)});$('#ganttCsv').addEventListener('click',()=>downloadFile('fieldnote-schedule.csv',scheduleToCSV(scheduleTasks(state.draft,state.projectStart).tasks),'text/csv;charset=utf-8'));$('#exportMenuBtn').addEventListener('click',openExportMenu);$('#modalClose').addEventListener('click',closeModal);$('#modalBackdrop').addEventListener('click',e=>{if(e.target===$('#modalBackdrop'))closeModal()});document.addEventListener('click',e=>{if(e.target?.id==='cancelReset')closeModal();if(e.target?.id==='confirmReset'){mutate(()=>Object.assign(state,demo()));closeModal();fitBoard();toast('サンプルを復元しました')}});
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modalBackdrop').classList.contains('hidden')){closeModal();return}const tag=document.activeElement?.tagName?.toLowerCase();if(['input','textarea','select'].includes(tag)||document.activeElement?.isContentEditable)return;if(e.key===' '&&!e.repeat){state.space=true;e.preventDefault();return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return}if(e.key==='Delete'||e.key==='Backspace'){removeSelected();return}if(e.key==='Escape'){state.selected=null;setTool('select');return}if(e.ctrlKey||e.metaKey||e.altKey)return;const lookup={v:'select',h:'hand',r:'task',n:'note',t:'text',p:'pen',a:'arrow'};if(lookup[e.key.toLowerCase()])setTool(lookup[e.key.toLowerCase()])});document.addEventListener('keyup',e=>{if(e.key===' ')state.space=false});window.addEventListener('blur',()=>{state.space=false;if(canvasTouches.size){canvasTouches.clear();touchNavigation=false;pinch=null;cancelCanvasEdit()}else boardEnd()});
  const observer=new ResizeObserver(()=>{if(!state.ready){fitBoard();state.ready=true}});observer.observe(holder)}
 wire();render();
