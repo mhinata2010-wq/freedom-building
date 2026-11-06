@@ -99,7 +99,7 @@ function changeArrowTarget(edgeId,toId){
 }
 function renderInspector(){const e=$('#inspector');const n=nodeById(state.selected);if(!n){const edge=state.edges.find(x=>x.id===state.selected);
  if(edge){
-   const taskOptions=state.nodes.filter(item=>item.type==='task'&&item.id!==edge.from).map(item=>`<option value="${escapeHtml(item.id)}" ${edge.to===item.id?'selected':''}>${escapeHtml(item.text.split('\\n')[0]||'工程')}</option>`).join('');
+   const taskOptions=state.nodes.filter(item=>item.type==='task'&&item.id!==edge.from).map(item=>`<option value="${escapeHtml(item.id)}" ${edge.to===item.id?'selected':''}>${escapeHtml(item.text.split(String.fromCharCode(10))[0]||'工程')}</option>`).join('');
    e.innerHTML=`<p class="empty-inspector">青い先端をドラッグするか、接続先を選択してください。</p><div class="field"><label for="arrowTarget">矢印の接続先</label><select id="arrowTarget">${taskOptions}</select></div><button class="button secondary" id="deleteSelected">${ico('trash')} この矢印を削除</button>`;
    $('#arrowTarget').addEventListener('change',event=>changeArrowTarget(edge.id,event.target.value));
  }else e.innerHTML='<p class="empty-inspector">キャンバスで要素を選ぶと、ここから内容を編集できます。</p>';
