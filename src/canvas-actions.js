@@ -18,3 +18,13 @@ export function reconnectTarget(edges,nodes,edgeId,toId) {
   if(!source) return {ok:false,reason:'invalid'};
   return {ok:true,unchanged:false,edges:edges.map(edge=>edge.id===edgeId?{...edge,to:toId,toSide:incomingSide(source,target)}:edge)};
 }
+
+/**
+ * Delete a dependency only on an intentional endpoint drag released off tasks.
+ * The distance is in screen pixels so zoom doesn't change the gesture threshold.
+ */
+export function shouldDeleteDetachedArrow(eventType,start,end,hasTaskTarget,threshold=14){
+ if(eventType!=='pointerup'||hasTaskTarget||!start||!end)return false;
+ const distance=Math.hypot(end.x-start.x,end.y-start.y);
+ return Number.isFinite(distance)&&distance>=threshold;
+}
