@@ -79,3 +79,8 @@ The development branch should be reviewed through a pull request before merging 
 ### Design rationale
 
 Figma's UI is a reference for direct manipulation and tool discoverability, not an attempt to copy Figma's branded assets or achieve arbitrary “90% feature parity.” This zero-dependency SVG canvas avoids production licensing constraints of certain SDKs. Plan to test interactions on actual jobsite hardware before choosing a heavier canvas engine.
+
+## Project work calendar (Issue #20)
+Use **休工日設定** in the canvas top action bar to choose working weekdays and add/remove individual nonworking dates. It is a project-wide scheduling rule, **not a drawing object or a field in each task card**. The scheduler skips nonworking dates when calculating task completion and successor start dates; Gantt preview and CSV use those calculated dates.
+
+Legacy projects without `workCalendar` keep the existing seven-day calendar behavior. The chosen calendar is stored in the existing local project JSON, and Undo/Redo restores calendar changes. Holiday feeds, per-task calendar overrides and collaboration are not implemented. Do not treat a calculated schedule as a verified field plan without supervisor review.

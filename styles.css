@@ -36,3 +36,17 @@
   .canvas-top-actions{gap:4px}
   #addTemplateBtn{min-height:44px;padding-inline:8px}
 }
+
+.calendar-weekdays{border:1px solid #e2e8f0;border-radius:9px;padding:12px;margin:14px 0}
+.calendar-weekdays legend{font-size:12px;font-weight:700;color:#334155}
+.calendar-weekday-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.calendar-weekday-grid label{position:relative;cursor:pointer}
+.calendar-weekday-grid input{position:absolute;opacity:0;inset:0;width:100%;height:100%;cursor:pointer}
+.calendar-weekday-grid span{display:grid;place-items:center;min-height:40px;border:1px solid #dbe3ee;border-radius:7px;font-size:12px;color:#64748b}
+.calendar-weekday-grid input:checked+span{color:#1d4ed8;background:#eff6ff;border-color:#93c5fd;font-weight:700}
+.calendar-weekday-grid input:focus-visible+span{outline:3px solid #2563eb;outline-offset:2px}
+.calendar-date-add{display:flex;gap:8px}.calendar-date-add input{flex:1;min-width:0}
+.calendar-holiday-list{max-height:142px;overflow:auto;font-size:12px;color:#64748b}
+.calendar-holiday-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eef2f7}
+#workCalendarBtn{flex-shrink:0}
+@media(max-width:680px){.canvas-topbar{padding:0 8px}.canvas-top-actions{gap:5px}#workCalendarBtn{padding:0 7px;font-size:10px}.canvas-top-actions #addTemplateBtn{display:none}}
