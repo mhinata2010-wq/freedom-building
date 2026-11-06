@@ -4,6 +4,21 @@ export function dateISO(d) {return `${d.getFullYear()}-${String(d.getMonth()+1).
 export function parseISO(value) {if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;const [y,m,d]=value.split('-').map(Number);const out=new Date(y,m-1,d);return dateISO(out)===value?out:null}
 export function addDays(iso, days) {const d=parseISO(iso); if(!d)return iso;d.setDate(d.getDate()+days);return dateISO(d)}
 export function durationFromText(text) {const v=String(text||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));const match=v.match(/(?:^|[^0-9])([1-9]\d{0,2})\s*(?:営業日|日間|日|days?|d\b)/i);return match?Math.min(Number(match[1]),180):null}
+/**
+ * Keep the free-form task memo when the structured duration changes.
+ * Only a standalone duration line is replaced; descriptive prose remains intact.
+ */
+export function updateTaskDurationText(text, duration) {
+ const value=Number(duration);
+ if(!Number.isInteger(value)||value<1||value>180)throw new RangeError('工期は1〜180日で入力してください');
+ const lines=String(text??'').split(/\r?\n/);
+ if(!lines.length||!lines[0].trim())lines[0]='工程';
+ const durationLine=/^\s*[1-9]\d{0,2}\s*(?:日間|営業日|日)\s*$/;
+ const index=lines.findIndex((line,i)=>i>0&&durationLine.test(line));
+ if(index>=0)lines[index]=String(value)+'日';
+ else lines.splice(1,0,String(value)+'日');
+ return lines.join('\n');
+}
 function firstLine(text){return String(text||'').trim().split(/\n/)[0].replace(/\s*[（(]?\d+\s*(?:営業日|日間|日|days?)[)）]?\s*$/i,'').trim()}
 export function extractDraft(nodes,edges){
  const candidates=nodes.filter(n=>n.type==='task'||(n.type==='text'&&durationFromText(n.text)!==null));
