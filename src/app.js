@@ -39,16 +39,7 @@ function renderEdges(){
    ev.stopPropagation();state.selected=edge.id;render();
   });
   const p=svg('path',{d:path,stroke:state.selected===edge.id?'#2563eb':'#94a3b8','stroke-width':2.3,fill:'none','stroke-linecap':'round','pointer-events':'none','marker-end':'url(#arrowHead)',class:'svg-connector'},edgesEl);
-  if(state.selected===edge.id&&state.tool==='select'){
-   const endpoint=portPosition(b,toSide);
-   const h=svg('circle',{cx:endpoint.x,cy:endpoint.y,r:10,fill:'#fff',stroke:'#2563eb','stroke-width':3,style:'cursor:grab',role:'button',tabindex:0,'aria-label':'矢印の接続先をドラッグして変更'},edgesEl);
-   h.addEventListener('pointerdown',ev=>{
-    if(ev.button!==0)return;
-    ev.stopPropagation();ev.preventDefault();
-    state.drag={mode:'reconnect',edgeId:edge.id,from:edge.from,side:fromSide,point:toWorld(ev),targetId:null};
-    board.setPointerCapture(ev.pointerId);renderEdges();
-   });
-  }
+
  }
  if(state.edgeFrom){const n=nodeById(state.edgeFrom);if(n)svg('circle',{cx:n.x+n.w/2,cy:n.y+n.h/2,r:7,fill:'#2563eb',opacity:.4},edgesEl)}
  previewConnector();
@@ -80,6 +71,23 @@ function renderNodes(){shapes.replaceChildren();selection.replaceChildren();for(
   }
   if(state.selected===n.id&&state.tool==='select'){svg('rect',{x:0,y:0,width:w,height:h,rx:10,stroke:'#2563eb','stroke-width':1,'stroke-dasharray':'4 5',fill:'none','pointer-events':'none'},g);const hnd=svg('rect',{x:w-7,y:h-7,width:14,height:14,rx:3,class:'node-handle',style:'cursor:nwse-resize'},g);hnd.addEventListener('pointerdown',e=>{e.stopPropagation();const p=toWorld(e);state.drag={mode:'resize',nodeId:n.id,start:p,origin:{w:n.w,h:n.h},before:serialize()};board.setPointerCapture(e.pointerId)})}
  }}
+ renderSelectedArrowHandle();
+function renderSelectedArrowHandle(){
+ const edge=state.edges.find(item=>item.id===state.selected);
+ if(!edge||state.tool!=='select')return;
+ const a=nodeById(edge.from),b=nodeById(edge.to);
+ if(!a||!b)return;
+ const fromSide=edge.fromSide|| (Math.abs((b.x+b.w/2)-(a.x+a.w/2))>Math.abs((b.y+b.h/2)-(a.y+a.h/2)) ? ((b.x>a.x)?'right':'left') : ((b.y>a.y)?'bottom':'top'));
+ const toSide=edge.toSide||incomingSide(a,b);
+ const endpoint=portPosition(b,toSide);
+ const h=svg('circle',{cx:endpoint.x,cy:endpoint.y,r:11,fill:'#fff',stroke:'#2563eb','stroke-width':3,style:'cursor:grab',role:'button',tabindex:0,'aria-label':'矢印の接続先をドラッグして変更'},selection);
+ h.addEventListener('pointerdown',ev=>{
+  if(ev.button!==0)return;
+  ev.stopPropagation();ev.preventDefault();
+  state.drag={mode:'reconnect',edgeId:edge.id,from:edge.from,side:fromSide,point:toWorld(ev),targetId:null};
+  board.setPointerCapture(ev.pointerId);renderEdges();
+ });
+}
 function selectDrawable(e,n){if(e.button!==0)return;e.stopPropagation();if(state.tool==='arrow'){if(n.type==='pen'){toast('ペン線には工程をつなげません');return}if(!state.edgeFrom){state.edgeFrom=n.id;toast('次に接続先のカードをクリック')}else{const from=state.edgeFrom;state.edgeFrom=null;if(from!==n.id&&!state.edges.some(edge=>edge.from===from&&edge.to===n.id)){mutate(()=>state.edges.push({id:id(),from,to:n.id}));toast('工程の依存関係を追加しました')}}render();return}
  if(state.tool!=='select')return;state.selected=n.id;const pt=toWorld(e);state.drag={mode:'node',nodeId:n.id,start:pt,origin:{x:n.x,y:n.y},before:serialize()};board.setPointerCapture(e.pointerId);render()}
 function renderInspector(){const e=$('#inspector');const n=nodeById(state.selected);if(!n){e.innerHTML=state.selected&&state.edges.some(x=>x.id===state.selected)?`<p class="empty-inspector">選択した矢印は依存関係です。</p><button class="button secondary" id="deleteSelected">${ico('trash')} この矢印を削除</button>`:'<p class="empty-inspector">キャンバスで要素を選ぶと、ここから内容を編集できます。</p>';$('#deleteSelected')?.addEventListener('click',removeSelected);return}
