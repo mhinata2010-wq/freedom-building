@@ -1,4 +1,4 @@
-import {todayISO,addDays,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,parseISO,groupInkStrokes} from './scheduler.js';
+import {todayISO,addDays,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,parseISO,groupInkStrokes,updateTaskDurationText} from './scheduler.js';
 import {SIDES,portPosition,incomingSide,curveBetween,dropTarget,wouldCreateCycle} from './connection.js';
 import {initCanvasDock} from './toolbar.js';
 import {centeredNotePosition,reconnectTarget,shouldDeleteDetachedArrow,createRenovationTemplate} from './canvas-actions.js';
@@ -106,7 +106,7 @@ function renderInspector(){const e=$('#inspector');const n=nodeById(state.select
  $('#deleteSelected')?.addEventListener('click',removeSelected);return}
  e.innerHTML=`<div class="field"><label for="inspectorText">内容（改行可能）</label><textarea id="inspectorText" rows="${n.type==='note'?4:2}">${escapeHtml(n.text||'')}</textarea></div>${n.type==='task'?`<div class="field-row"><div class="field"><label for="inspectorDuration">工期（日）</label><input id="inspectorDuration" type="number" min="1" max="180" value="${Math.max(1,Math.min(180,Number(n.duration)||1))}"></div><div class="field"><label for="inspectorStart">開始日（任意）</label><input id="inspectorStart" type="date" value="${escapeHtml(n.startDate||'')}"></div></div>`:''}<div class="inspector-actions"><button id="duplicateSelected" class="button secondary">${ico('copy')} 複製</button><button id="deleteSelected" class="button secondary">${ico('trash')} 削除</button></div>`;
  $('#inspectorText').addEventListener('change',ev=>mutate(()=>{n.text=ev.target.value.slice(0,500);const found=n.text.match(/(?:^|\n)\s*(\d+)\s*日/);if(found&&n.type==='task')n.duration=Math.min(Number(found[1]),180)}));
- $('#inspectorDuration')?.addEventListener('change',ev=>mutate(()=>{n.duration=Math.max(1,Math.min(180,Number(ev.target.value)||1));n.text=(n.text.split('\n')[0]||'工程')+`\n${n.duration}日`}));
+ $('#inspectorDuration')?.addEventListener('change',ev=>mutate(()=>{n.duration=Math.max(1,Math.min(180,Number(ev.target.value)||1));n.text=updateTaskDurationText(n.text,n.duration)}));
  $('#inspectorStart')?.addEventListener('change',ev=>mutate(()=>n.startDate=ev.target.value));
  $('#duplicateSelected').addEventListener('click',()=>mutate(()=>{const nn={...clone(n),id:id(),x:n.x+30,y:n.y+30};state.nodes.push(nn);state.selected=nn.id}));
  $('#deleteSelected').addEventListener('click',removeSelected)}
