@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Freeform construction planning canvas with AI-assisted Gantt conversion",
+  "description": "Freeform construction planning canvas with local deterministic Gantt generation",
   "scripts": {
     "dev": "node server/dev.mjs",
     "start": "node server/dev.mjs",
-    "check": "node --check src/app.js && node --check src/connection.js && node --check src/toolbar.js && node --check src/scheduler.js && node --check api/analyze.js && node --check server/dev.mjs",
+    "check": "node --check src/app.js && node --check src/connection.js && node --check src/toolbar.js && node --check src/scheduler.js && node --check server/dev.mjs",
     "test": "node --test"
   },
   "engines": {"node": ">=20"}
