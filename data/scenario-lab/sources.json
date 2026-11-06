@@ -1,0 +1,91 @@
+[
+  {
+    "id": "R01",
+    "source_url": "https://handyman.jp/blog/oono-y/192191",
+    "published_fact": "水回り・内装改修は合計7日、最初の浴室・洗面4日、週をまたいでキッチン・トイレ・リビング・廊下3日。",
+    "source_phases": [
+      {
+        "name": "浴室・洗面",
+        "days": 4,
+        "source": "published"
+      },
+      {
+        "name": "キッチン・トイレ・内装",
+        "days": 3,
+        "source": "published"
+      }
+    ],
+    "default_start": "2026-11-16",
+    "start_origin": "synthetic"
+  },
+  {
+    "id": "R02",
+    "source_url": "https://kyodo.or.jp/jirei/reform-type/20496/",
+    "published_fact": "マンションのキッチン・浴室・トイレ・洗面改修は合計5日、施工日は2025-03-27、2025-04-18〜19、2025-04-25〜26。",
+    "source_phases": [
+      {
+        "name": "施工日1（工種内訳不明）",
+        "days": 1,
+        "start": "2025-03-27",
+        "source": "published_dates"
+      },
+      {
+        "name": "施工期間2（工種内訳不明）",
+        "days": 2,
+        "start": "2025-04-18",
+        "source": "published_dates"
+      },
+      {
+        "name": "施工期間3（工種内訳不明）",
+        "days": 2,
+        "start": "2025-04-25",
+        "source": "published_dates"
+      }
+    ],
+    "default_start": "2025-03-27",
+    "start_origin": "published"
+  },
+  {
+    "id": "R03",
+    "source_url": "https://www.ichihara-s.com/constructionachievements",
+    "published_fact": "キッチン・LDK改修で床張替えを伴う工期7日の公開事例。工種別日数は非公表。",
+    "source_phases": [
+      {
+        "name": "キッチン改修（仮定）",
+        "days": 3,
+        "source": "synthetic"
+      },
+      {
+        "name": "LDK床張替え（仮定）",
+        "days": 4,
+        "source": "synthetic"
+      }
+    ],
+    "default_start": "2026-11-16",
+    "start_origin": "synthetic"
+  },
+  {
+    "id": "R04",
+    "source_url": "https://www.lixil-reformshop.jp/shop/SP00000594/case/171521.html",
+    "published_fact": "戸建ての浴室・洗面・キッチン・窓・内装改修は工期2週間。工種別日数は非公表。",
+    "source_phases": [
+      {
+        "name": "浴室・洗面改修（仮定）",
+        "days": 4,
+        "source": "synthetic"
+      },
+      {
+        "name": "キッチン・窓改修（仮定）",
+        "days": 4,
+        "source": "synthetic"
+      },
+      {
+        "name": "内装仕上げ（仮定）",
+        "days": 4,
+        "source": "synthetic"
+      }
+    ],
+    "default_start": "2026-11-16",
+    "start_origin": "synthetic"
+  }
+]
