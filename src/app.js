@@ -25,8 +25,34 @@ function getScreenPoint(e){const r=board.getBoundingClientRect();return {x:e.cli
 function toWorld(e){const s=getScreenPoint(e);return {x:(s.x-state.panX)/state.zoom,y:(s.y-state.panY)/state.zoom}}
 function transform(){world.setAttribute('transform',`translate(${state.panX} ${state.panY}) scale(${state.zoom})`);$('#zoomText').textContent=`${Math.round(state.zoom*100)}%`}
 function edgePath(a,b){const ax=a.x+a.w/2,ay=a.y+a.h/2,bx=b.x+b.w/2,by=b.y+b.h/2;const dx=bx-ax,dy=by-ay;if(Math.abs(dx)>Math.abs(dy)*.75){const sign=Math.sign(dx)||1,x1=ax+sign*a.w/2,x2=bx-sign*b.w/2,c=Math.max(35,Math.abs(x2-x1)*.42);return `M${x1} ${ay} C${x1+sign*c} ${ay},${x2-sign*c} ${by},${x2} ${by}`}const sign=Math.sign(dy)||1,y1=ay+sign*a.h/2,y2=by-sign*b.h/2,c=Math.max(35,Math.abs(y2-y1)*.42);return `M${ax} ${y1} C${ax} ${y1+sign*c},${bx} ${y2-sign*c},${bx} ${y2}`}
-function previewConnector(){const d=state.drag;if(!d||d.mode!=='connect')return;const source=nodeById(d.from);if(!source)return;const target=d.targetId?nodeById(d.targetId):null;const endSide=target?incomingSide(source,target):({left:'right',right:'left',top:'bottom',bottom:'top'}[d.side]);const end=target?portPosition(target,endSide):d.point;svg('path',{d:curveBetween(portPosition(source,d.side),end,d.side,endSide),class:'svg-connector-preview','marker-end':'url(#arrowHead)'},edgesEl)}
-function renderEdges(){edgesEl.replaceChildren();for(const edge of state.edges){const a=nodeById(edge.from),b=nodeById(edge.to);if(!a||!b)continue;const path=edge.fromSide&&edge.toSide?curveBetween(portPosition(a,edge.fromSide),portPosition(b,edge.toSide),edge.fromSide,edge.toSide):edgePath(a,b);svg('path',{d:path,stroke:'#e2e8f0','stroke-width':13,fill:'none','pointer-events':'none'},edgesEl);const p=svg('path',{d:path,stroke:state.selected===edge.id?'#2563eb':'#94a3b8','stroke-width':2.3,fill:'none','stroke-linecap':'round','marker-end':'url(#arrowHead)',class:`svg-connector ${state.selected===edge.id?'selected':''}`},edgesEl);p.addEventListener('pointerdown',e=>{if(state.tool==='select'){e.stopPropagation();state.selected=edge.id;render()}})}if(state.edgeFrom){const n=nodeById(state.edgeFrom);if(n)svg('circle',{cx:n.x+n.w/2,cy:n.y+n.h/2,r:7,fill:'#2563eb',opacity:.4},edgesEl)}previewConnector()}
+function previewConnector(){const d=state.drag;if(!d||!['connect','reconnect'].includes(d.mode))return;const source=nodeById(d.from);if(!source)return;const target=d.targetId?nodeById(d.targetId):null;const endSide=target?incomingSide(source,target):({left:'right',right:'left',top:'bottom',bottom:'top'}[d.side]);const end=target?portPosition(target,endSide):d.point;svg('path',{d:curveBetween(portPosition(source,d.side),end,d.side,endSide),class:'svg-connector-preview','marker-end':'url(#arrowHead)'},edgesEl)}
+function renderEdges(){
+ edgesEl.replaceChildren();
+ for(const edge of state.edges){
+  const a=nodeById(edge.from),b=nodeById(edge.to);
+  if(!a||!b)continue;
+  const fromSide=edge.fromSide|| (Math.abs((b.x+b.w/2)-(a.x+a.w/2))>Math.abs((b.y+b.h/2)-(a.y+a.h/2)) ? ((b.x>a.x)?'right':'left') : ((b.y>a.y)?'bottom':'top'));
+  const toSide=edge.toSide||incomingSide(a,b);
+  const path=edge.fromSide&&edge.toSide?curveBetween(portPosition(a,fromSide),portPosition(b,toSide),fromSide,toSide):edgePath(a,b);
+  svg('path',{d:path,stroke:'transparent','stroke-width':16,fill:'none',class:'edge-hit-target'},edgesEl).addEventListener('pointerdown',ev=>{
+   if(state.tool!=='select')return;
+   ev.stopPropagation();state.selected=edge.id;render();
+  });
+  const p=svg('path',{d:path,stroke:state.selected===edge.id?'#2563eb':'#94a3b8','stroke-width':2.3,fill:'none','stroke-linecap':'round','pointer-events':'none','marker-end':'url(#arrowHead)',class:'svg-connector'},edgesEl);
+  if(state.selected===edge.id&&state.tool==='select'){
+   const endpoint=portPosition(b,toSide);
+   const h=svg('circle',{cx:endpoint.x,cy:endpoint.y,r:10,fill:'#fff',stroke:'#2563eb','stroke-width':3,style:'cursor:grab',role:'button',tabindex:0,'aria-label':'矢印の接続先をドラッグして変更'},edgesEl);
+   h.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    ev.stopPropagation();ev.preventDefault();
+    state.drag={mode:'reconnect',edgeId:edge.id,from:edge.from,side:fromSide,point:toWorld(ev),targetId:null};
+    board.setPointerCapture(ev.pointerId);renderEdges();
+   });
+  }
+ }
+ if(state.edgeFrom){const n=nodeById(state.edgeFrom);if(n)svg('circle',{cx:n.x+n.w/2,cy:n.y+n.h/2,r:7,fill:'#2563eb',opacity:.4},edgesEl)}
+ previewConnector();
+}
 function renderNodes(){shapes.replaceChildren();selection.replaceChildren();for(const n of state.nodes){if(n.type==='pen'){svg('polyline',{points:(n.points||[]).map(p=>p.join(',')).join(' '),fill:'none',stroke:n.color||'#334155','stroke-width':n.stroke||3,'stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'stroke'},shapes).addEventListener('pointerdown',e=>selectDrawable(e,n));continue}
   const g=svg('g',{transform:`translate(${n.x} ${n.y})`,class:`svg-node ${state.selected===n.id?'selected':''} ${state.drag?.targetId===n.id?'connector-target':''}`, 'data-node':n.id},shapes);const w=n.w||210,h=n.h||96;
   if(n.type==='task'){
@@ -70,15 +96,45 @@ function renderGantt(s){const root=$('#fullGantt');if(!s.tasks.length){root.inne
  const maxDay=Math.max(...s.tasks.map(t=>Math.round((new Date(t.end+'T12:00:00')-new Date(s.projectStart+'T12:00:00'))/86400000)+1));const count=Math.min(60,Math.max(15,maxDay+3));const days=Array.from({length:count},(_,i)=>addDays(s.projectStart,i));const dated=t=>Math.round((new Date(t.start+'T12:00:00')-new Date(s.projectStart+'T12:00:00'))/86400000);
  root.innerHTML=`<table class="gantt-table" style="width:${344+count*32}px"><thead><tr><th class="gantt-task-col">工程名</th><th class="gantt-duration-col">日数</th><th class="gantt-date-col">開始日</th>${days.map(d=>`<th class="gantt-day">${Number(d.slice(8))}</th>`).join('')}</tr></thead><tbody>${s.tasks.map(t=>{const first=dated(t);return `<tr><td class="gantt-task-col gantt-task-name" title="${escapeHtml(t.title)}">${escapeHtml(t.title)} ${!t.confirmed?'⚬':''}</td><td>${t.duration}日</td><td>${escapeHtml(t.start.slice(5))}</td>${days.map((d,i)=>`<td class="gantt-day gantt-bar-cell ${new Date(d+'T12:00:00').getDay()%6===0?'weekend':''}">${i===first?`<div class="gantt-bar ${t.confirmed?'':'draft'}" style="width:${Math.min(t.duration,count-i)*32-4}px">${t.duration>2?escapeHtml(t.title):''}</div>`:''}</td>`).join('')}</tr>`}).join('')}</tbody></table>`}
 function render(){renderEdges();renderNodes();transform();renderLayers();renderInspector();renderStatus();renderResults();$$('[data-tool]').forEach(el=>el.classList.toggle('active',el.dataset.tool===state.tool));holder.dataset.tool=state.tool;$('#canvasTab').classList.toggle('active',state.view==='canvas');$('#ganttTab').classList.toggle('active',state.view==='gantt');holder.classList.toggle('hidden',state.view!=='canvas');$('#canvasDockRow').classList.toggle('hidden',state.view!=='canvas');$('#ganttHolder').classList.toggle('hidden',state.view!=='gantt');$('#projectStart').value=state.projectStart;$('#activeHint').textContent=state.tool==='arrow'?(state.edgeFrom?'接続先のカードを選んでください':'最初のカードをクリックして接続開始'):state.tool==='pen'?'ドラッグして自由に描く':state.tool==='hand'?'ドラッグしてキャンバスを移動':'ダブルクリックでテキストを編集できます';}
-function setTool(tool){state.tool=tool;state.edgeFrom=null;state.selected=null;render()}
+function setTool(tool){
+ if(tool==='note'){
+  const r=board.getBoundingClientRect();
+  const center={x:(r.width/2-state.panX)/state.zoom-110,y:(r.height/2-state.panY)/state.zoom-62};
+  newNode('note',center);
+  toast('付箋を追加しました。ダブルクリックで編集できます');
+  return;
+ }
+ state.tool=tool;state.edgeFrom=null;state.selected=null;render()
+}
 function newNode(type,p){const node={id:id(),type,x:Math.round(p.x),y:Math.round(p.y),w:type==='note'?220:type==='text'?225:222,h:type==='note'?124:type==='text'?70:115,text:type==='task'?'新しい工程\n1日':type==='note'?'メモ\nここに補足を記入':'テキストを入力',duration:type==='task'?1:undefined,color:type==='task'?'#2563eb':'#f59e0b'};mutate(()=>{state.nodes.push(node);state.selected=node.id});setTool('select');state.selected=node.id;render();if(type==='text')openInlineEdit(node)}
 function removeSelected(){if(!state.selected)return;mutate(()=>{state.nodes=state.nodes.filter(n=>n.id!==state.selected);state.edges=state.edges.filter(e=>e.id!==state.selected&&e.from!==state.selected&&e.to!==state.selected);state.draft=state.draft.filter(t=>t.sourceId!==state.selected);state.selected=null});toast('オブジェクトを削除しました')}
 function openInlineEdit(n){if(n.type==='pen')return;document.querySelector('.inline-editor')?.remove();const area=document.createElement('textarea');area.className='inline-editor';area.value=n.text;area.style.left=`${n.x*state.zoom+state.panX}px`;area.style.top=`${n.y*state.zoom+state.panY}px`;area.style.width=`${Math.max(125,n.w*state.zoom)}px`;area.style.height=`${Math.max(65,n.h*state.zoom)}px`;holder.appendChild(area);area.focus();area.select();let resolved=false;function finish(commitEdit){if(resolved)return;resolved=true;const newVal=area.value;area.remove();if(commitEdit&&n.text!==newVal)mutate(()=>{n.text=newVal.slice(0,500);const m=newVal.match(/(?:^|\n)\s*(\d+)\s*日/);if(m&&n.type==='task')n.duration=Math.max(1,Math.min(180,Number(m[1])))});else render()};area.addEventListener('blur',()=>finish(true));area.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Escape')finish(false);if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))finish(true)})}
 function fitBoard(){const rect=holder.getBoundingClientRect();if(!rect.width||!rect.height)return;const display=state.nodes.filter(n=>n.type!=='pen');if(!display.length){state.zoom=1;state.panX=rect.width/2-160;state.panY=rect.height/2-90;transform();return}const minX=Math.min(...display.map(n=>n.x),40),maxX=Math.max(...display.map(n=>n.x+n.w),800),minY=Math.min(...display.map(n=>n.y),50),maxY=Math.max(...display.map(n=>n.y+n.h),450);const w=maxX-minX,h=maxY-minY;state.zoom=Math.max(.35,Math.min(1.05,Math.min((rect.width-76)/w,(rect.height-100)/h)));state.panX=(rect.width-w*state.zoom)/2-minX*state.zoom;state.panY=(rect.height-h*state.zoom)/2-minY*state.zoom;transform()}
 function zoomTo(factor,cx,cy){const rect=board.getBoundingClientRect(),p={x:cx??rect.width/2,y:cy??rect.height/2};const next=Math.max(.25,Math.min(2.5,state.zoom*factor));state.panX=p.x-(p.x-state.panX)*next/state.zoom;state.panY=p.y-(p.y-state.panY)*next/state.zoom;state.zoom=next;transform()}
 function boardStart(e){if(e.button!==0&&e.button!==1)return;if(e.target.closest('.svg-node'))return;const isPan=state.tool==='hand'||state.space||e.button===1;const pt=toWorld(e);if(isPan){state.drag={mode:'pan',screen:getScreenPoint(e),origin:{x:state.panX,y:state.panY}};board.setPointerCapture(e.pointerId);return}if(state.tool==='pen'){const n={id:id(),type:'pen',points:[[pt.x,pt.y]],color:'#334155',stroke:3};state.drag={mode:'pen',nodeId:n.id,before:serialize()};state.nodes.push(n);board.setPointerCapture(e.pointerId);renderNodes();return}if(['task','note','text'].includes(state.tool)){newNode(state.tool,pt);return}if(state.tool==='arrow'){state.edgeFrom=null;renderEdges();return}state.selected=null;render()}
-function boardMove(e){if(!state.drag)return;const d=state.drag;const p=toWorld(e);if(d.mode==='connect'){d.point=p;d.targetId=dropTarget(state.nodes,p,d.from)?.id||null;renderNodes();renderEdges();return}if(d.mode==='node'){const n=nodeById(d.nodeId);if(n){n.x=Math.round(d.origin.x+(p.x-d.start.x));n.y=Math.round(d.origin.y+(p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='resize'){const n=nodeById(d.nodeId);if(n){n.w=Math.max(100,Math.round(d.origin.w+p.x-d.start.x));n.h=Math.max(70,Math.round(d.origin.h+p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='pan'){const s=getScreenPoint(e);state.panX=d.origin.x+s.x-d.screen.x;state.panY=d.origin.y+s.y-d.screen.y;transform()}else if(d.mode==='pen'){const n=nodeById(d.nodeId);if(n){const last=n.points.at(-1);if(Math.hypot(last[0]-p.x,last[1]-p.y)>2){n.points.push([Math.round(p.x),Math.round(p.y)]);renderNodes();transform()}}}}
-function boardEnd(e){if(!state.drag)return;const d=state.drag;state.drag=null;if(d.mode==='connect'){
+function boardMove(e){if(!state.drag)return;const d=state.drag;const p=toWorld(e);if(d.mode==='connect'||d.mode==='reconnect'){d.point=p;d.targetId=dropTarget(state.nodes,p,d.from)?.id||null;renderNodes();renderEdges();return}if(d.mode==='node'){const n=nodeById(d.nodeId);if(n){n.x=Math.round(d.origin.x+(p.x-d.start.x));n.y=Math.round(d.origin.y+(p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='resize'){const n=nodeById(d.nodeId);if(n){n.w=Math.max(100,Math.round(d.origin.w+p.x-d.start.x));n.h=Math.max(70,Math.round(d.origin.h+p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='pan'){const s=getScreenPoint(e);state.panX=d.origin.x+s.x-d.screen.x;state.panY=d.origin.y+s.y-d.screen.y;transform()}else if(d.mode==='pen'){const n=nodeById(d.nodeId);if(n){const last=n.points.at(-1);if(Math.hypot(last[0]-p.x,last[1]-p.y)>2){n.points.push([Math.round(p.x),Math.round(p.y)]);renderNodes();transform()}}}}
+function boardEnd(e){if(!state.drag)return;const d=state.drag;state.drag=null;
+ if(d.mode==='reconnect'){
+  const edge=state.edges.find(item=>item.id===d.edgeId);
+  const target=edge&&e?.type==='pointerup'?dropTarget(state.nodes,toWorld(e),edge.from):null;
+  if(!edge||!target){render();return}
+  if(target.id===edge.to){render();return}
+  if(state.edges.some(other=>other.id!==edge.id&&other.from===edge.from&&other.to===target.id)){
+   toast('この工程はすでに接続されています');render();return
+  }
+  const remaining=state.edges.filter(other=>other.id!==edge.id);
+  if(wouldCreateCycle(remaining,edge.from,target.id)){
+   toast('循環する工程の接続は作成できません');render();return
+  }
+  mutate(()=>{
+   edge.to=target.id;
+   edge.fromSide=d.side;
+   edge.toSide=incomingSide(nodeById(edge.from),target);
+   state.selected=edge.id;
+  });
+  toast('矢印の接続先を変更しました');return;
+ }
+ if(d.mode==='connect'){
   const target=e?.type==='pointerup'?dropTarget(state.nodes,toWorld(e),d.from):null;
   if(!target){render();return}
   if(state.edges.some(edge=>edge.from===d.from&&edge.to===target.id)){toast('この工程はすでに接続されています');render();return}
