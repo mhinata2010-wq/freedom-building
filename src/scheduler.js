@@ -3,6 +3,27 @@ export function todayISO(now=new Date()) {return dateISO(now)}
 export function dateISO(d) {return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 export function parseISO(value) {if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;const [y,m,d]=value.split('-').map(Number);const out=new Date(y,m-1,d);return dateISO(out)===value?out:null}
 export function addDays(iso, days) {const d=parseISO(iso); if(!d)return iso;d.setDate(d.getDate()+days);return dateISO(d)}
+export function normalizeWorkCalendar(calendar){
+ const raw=calendar&&typeof calendar==='object'?calendar:{};
+ const workdays=Array.isArray(raw.workdays)?[...new Set(raw.workdays.filter(x=>Number.isInteger(x)&&x>=0&&x<=6))]:[0,1,2,3,4,5,6];
+ const holidays=Array.isArray(raw.holidays)?[...new Set(raw.holidays.filter(d=>parseISO(d)))].sort():[];
+ return {workdays,holidays};
+}
+export function isWorkingDay(date,calendar){
+ const parsed=parseISO(date);if(!parsed)return false;
+ const c=normalizeWorkCalendar(calendar);
+ return c.workdays.includes(parsed.getDay())&&!c.holidays.includes(date);
+}
+export function nextWorkingDay(date,calendar){
+ let day=date;
+ for(let i=0;i<3660;i++){if(isWorkingDay(day,calendar))return day;day=addDays(day,1)}
+ throw new Error('稼働日がありません');
+}
+export function workdayEnd(start,duration,calendar){
+ let end=nextWorkingDay(start,calendar);
+ for(let i=1;i<duration;i++)end=nextWorkingDay(addDays(end,1),calendar);
+ return end;
+}
 export function durationFromText(text) {const v=String(text||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));const match=v.match(/(?:^|[^0-9])([1-9]\d{0,2})\s*(?:営業日|日間|日|days?|d\b)/i);return match?Math.min(Number(match[1]),180):null}
 function firstLine(text){return String(text||'').trim().split(/\n/)[0].replace(/\s*[（(]?\d+\s*(?:営業日|日間|日|days?)[)）]?\s*$/i,'').trim()}
 export function extractDraft(nodes,edges){
@@ -28,13 +49,13 @@ export function normalizeAiDraft(aiTasks,nodes,edges){
  for(const t of output){t.dependsOn=[...new Set(t.dependsOn)].filter(id=>ids.has(id));if(t.dependsOn.some(id=>!edgesSet.has(`${id}:${t.id}`))){t.needsReview=true;t.reason=[t.reason,'AIが推定した依存関係を要確認'].filter(Boolean).join(' / ')}}
  return output;
 }
-export function scheduleTasks(rawTasks, projectStartISO){
- const projectStart=parseISO(projectStartISO)?projectStartISO:todayISO();
+export function scheduleTasks(rawTasks, projectStartISO, calendar){
+ const projectStart=parseISO(projectStartISO)?projectStartISO:todayISO();const workCalendar=normalizeWorkCalendar(calendar);if(!workCalendar.workdays.length)throw new Error('稼働日を1日以上設定してください');
  const valid=rawTasks.map(t=>({...t,dependsOn:[...new Set(Array.isArray(t.dependsOn)?t.dependsOn:[])]}));
  const map=new Map(valid.map(t=>[t.id,t]));const resolving=new Set(),resolved=new Map(),warnings=[];
- function visit(id){if(resolved.has(id))return resolved.get(id);const t=map.get(id);if(!t)return null;if(resolving.has(id)){warnings.push(`依存関係が循環しています: ${t.title}`);return null}resolving.add(id);let start=projectStart;for(const dep of t.dependsOn){if(!map.has(dep)){warnings.push(`${t.title}: 不明な先行工程があります`);continue}const prev=visit(dep);if(prev){const next=addDays(prev.end,1);if(next>start)start=next}}
+ function visit(id){if(resolved.has(id))return resolved.get(id);const t=map.get(id);if(!t)return null;if(resolving.has(id)){warnings.push(`依存関係が循環しています: ${t.title}`);return null}resolving.add(id);let start=projectStart;for(const dep of t.dependsOn){if(!map.has(dep)){warnings.push(`${t.title}: 不明な先行工程があります`);continue}const prev=visit(dep);if(prev){const next=nextWorkingDay(addDays(prev.end,1),workCalendar);if(next>start)start=next}}
  if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else if(t.startDate>start)start=t.startDate}
- const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const out={...t,duration,start,end:addDays(start,duration-1),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
+ const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const newStart=nextWorkingDay(start,workCalendar);if(start!==newStart)warnings.push(`${t.title}: 休工日なので開始日を${newStart}に調整しました`);start=newStart;const out={...t,duration,start,end:workdayEnd(start,duration,workCalendar),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
  for(const t of valid)visit(t.id);
  return {tasks:valid.map(t=>resolved.get(t.id)).filter(Boolean),warnings,projectStart};
 }
