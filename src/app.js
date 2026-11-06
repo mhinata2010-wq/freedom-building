@@ -70,8 +70,7 @@ function renderNodes(){shapes.replaceChildren();selection.replaceChildren();for(
    }
   }
   if(state.selected===n.id&&state.tool==='select'){svg('rect',{x:0,y:0,width:w,height:h,rx:10,stroke:'#2563eb','stroke-width':1,'stroke-dasharray':'4 5',fill:'none','pointer-events':'none'},g);const hnd=svg('rect',{x:w-7,y:h-7,width:14,height:14,rx:3,class:'node-handle',style:'cursor:nwse-resize'},g);hnd.addEventListener('pointerdown',e=>{e.stopPropagation();const p=toWorld(e);state.drag={mode:'resize',nodeId:n.id,start:p,origin:{w:n.w,h:n.h},before:serialize()};board.setPointerCapture(e.pointerId)})}
- }}
- renderSelectedArrowHandle();
+ }renderSelectedArrowHandle();}
 function renderSelectedArrowHandle(){
  const edge=state.edges.find(item=>item.id===state.selected);
  if(!edge||state.tool!=='select')return;
