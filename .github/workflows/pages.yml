@@ -1,0 +1,55 @@
+name: Deploy public preview to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate JavaScript and run tests
+        run: |
+          npm run check
+          npm test
+      - name: Prepare safe static preview
+        run: |
+          mkdir -p _site/src
+          cp index.html styles.css _site/
+          cp src/*.js _site/src/
+          # GitHub Pages hosts project websites under /<repository>/.
+          # Make asset paths relative without changing localhost development.
+          sed -i 's|href="/styles.css"|href="./styles.css"|g; s|src="/src/app.js"|src="./src/app.js"|g' _site/index.html
+          touch _site/.nojekyll
+          test -s _site/index.html
+          test -s _site/src/app.js
+          test -s _site/styles.css
+          ! grep -Eq '(href="/styles.css"|src="/src/app.js")' _site/index.html
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload static preview
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
