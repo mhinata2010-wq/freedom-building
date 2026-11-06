@@ -31,3 +31,9 @@ export function wouldCreateCycle(edges,from,to) {
   while(stack.length){const at=stack.pop();if(at===from)return true;if(visited.has(at))continue;visited.add(at);for(const edge of edges){if(edge.from===at)stack.push(edge.to)}}
   return false;
 }
+
+export function arrowRetargetError(edges,edge,targetId) {
+  const others=edges.filter(other=>other.id!==edge.id);
+  if(others.some(other=>other.from===edge.from&&other.to===targetId))return 'duplicate';
+  return wouldCreateCycle(others,edge.from,targetId)?'cycle':null;
+}

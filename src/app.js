@@ -1,5 +1,5 @@
 import {todayISO,addDays,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,parseISO,groupInkStrokes} from './scheduler.js';
-import {SIDES,portPosition,incomingSide,curveBetween,dropTarget,wouldCreateCycle} from './connection.js';
+import {SIDES,portPosition,incomingSide,curveBetween,dropTarget,wouldCreateCycle,arrowRetargetError} from './connection.js';
 import {initCanvasDock} from './toolbar.js';
 const NS='http://www.w3.org/2000/svg';
 const $=s=>document.querySelector(s);const $$=s=>[...document.querySelectorAll(s)];
@@ -24,21 +24,34 @@ function nodeById(i){return state.nodes.find(n=>n.id===i)}
 function getScreenPoint(e){const r=board.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}}
 function toWorld(e){const s=getScreenPoint(e);return {x:(s.x-state.panX)/state.zoom,y:(s.y-state.panY)/state.zoom}}
 function transform(){world.setAttribute('transform',`translate(${state.panX} ${state.panY}) scale(${state.zoom})`);$('#zoomText').textContent=`${Math.round(state.zoom*100)}%`}
-function edgePath(a,b){const ax=a.x+a.w/2,ay=a.y+a.h/2,bx=b.x+b.w/2,by=b.y+b.h/2;const dx=bx-ax,dy=by-ay;if(Math.abs(dx)>Math.abs(dy)*.75){const sign=Math.sign(dx)||1,x1=ax+sign*a.w/2,x2=bx-sign*b.w/2,c=Math.max(35,Math.abs(x2-x1)*.42);return `M${x1} ${ay} C${x1+sign*c} ${ay},${x2-sign*c} ${by},${x2} ${by}`}const sign=Math.sign(dy)||1,y1=ay+sign*a.h/2,y2=by-sign*b.h/2,c=Math.max(35,Math.abs(y2-y1)*.42);return `M${ax} ${y1} C${ax} ${y1+sign*c},${bx} ${y2-sign*c},${bx} ${y2}`}
+function defaultArrowSides(source,target){
+ const dx=target.x+target.w/2-source.x-source.w/2;
+ const dy=target.y+target.h/2-source.y-source.h/2;
+ if(Math.abs(dx)>Math.abs(dy)*.75)return dx>0?{fromSide:'right',toSide:'left'}:{fromSide:'left',toSide:'right'};
+ return dy>=0?{fromSide:'bottom',toSide:'top'}:{fromSide:'top',toSide:'bottom'};
+}
 function previewConnector(){const d=state.drag;if(!d||!['connect','reconnect'].includes(d.mode))return;const source=nodeById(d.from);if(!source)return;const target=d.targetId?nodeById(d.targetId):null;const endSide=target?incomingSide(source,target):({left:'right',right:'left',top:'bottom',bottom:'top'}[d.side]);const end=target?portPosition(target,endSide):d.point;svg('path',{d:curveBetween(portPosition(source,d.side),end,d.side,endSide),class:'svg-connector-preview','marker-end':'url(#arrowHead)'},edgesEl)}
 function renderEdges(){
  edgesEl.replaceChildren();
  for(const edge of state.edges){
   const a=nodeById(edge.from),b=nodeById(edge.to);
   if(!a||!b)continue;
-  const fromSide=edge.fromSide|| (Math.abs((b.x+b.w/2)-(a.x+a.w/2))>Math.abs((b.y+b.h/2)-(a.y+a.h/2)) ? ((b.x>a.x)?'right':'left') : ((b.y>a.y)?'bottom':'top'));
-  const toSide=edge.toSide||incomingSide(a,b);
-  const path=edge.fromSide&&edge.toSide?curveBetween(portPosition(a,fromSide),portPosition(b,toSide),fromSide,toSide):edgePath(a,b);
-  svg('path',{d:path,stroke:'transparent','stroke-width':16,fill:'none',class:'edge-hit-target'},edgesEl).addEventListener('pointerdown',ev=>{
-   if(state.tool!=='select')return;
-   ev.stopPropagation();state.selected=edge.id;render();
-  });
-  const p=svg('path',{d:path,stroke:state.selected===edge.id?'#2563eb':'#94a3b8','stroke-width':2.3,fill:'none','stroke-linecap':'round','pointer-events':'none','marker-end':'url(#arrowHead)',class:'svg-connector'},edgesEl);
+  const defaults=defaultArrowSides(a,b);
+  const fromSide=edge.fromSide||defaults.fromSide;
+  const toSide=edge.toSide||defaults.toSide;
+  const path=curveBetween(portPosition(a,fromSide),portPosition(b,toSide),fromSide,toSide);
+  const hit=svg('path',{d:path,stroke:'transparent','stroke-width':24,'vector-effect':'non-scaling-stroke',fill:'none',class:'edge-hit-target',tabindex:0,role:'button','aria-label':`${a.text.split('\n')[0]} → ${b.text.split('\n')[0]} の矢印`},edgesEl);
+  const selectEdge=ev=>{
+   ev.stopPropagation();
+   state.tool='select';
+   state.edgeFrom=null;
+   state.selected=edge.id;
+   render();
+   if(ev.type==='keydown')$('#arrowDestination')?.focus();
+  };
+  hit.addEventListener('pointerdown',ev=>{if(ev.button===0&&['select','arrow'].includes(state.tool)&&!state.space)selectEdge(ev)});
+  hit.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();selectEdge(ev)}});
+  svg('path',{d:path,stroke:state.selected===edge.id?'#2563eb':'#94a3b8','stroke-width':2.3,fill:'none','stroke-linecap':'round','pointer-events':'none','marker-end':'url(#arrowHead)',class:'svg-connector'},edgesEl);
 
  }
  if(state.edgeFrom){const n=nodeById(state.edgeFrom);if(n)svg('circle',{cx:n.x+n.w/2,cy:n.y+n.h/2,r:7,fill:'#2563eb',opacity:.4},edgesEl)}
@@ -76,10 +89,11 @@ function renderSelectedArrowHandle(){
  if(!edge||state.tool!=='select')return;
  const a=nodeById(edge.from),b=nodeById(edge.to);
  if(!a||!b)return;
- const fromSide=edge.fromSide|| (Math.abs((b.x+b.w/2)-(a.x+a.w/2))>Math.abs((b.y+b.h/2)-(a.y+a.h/2)) ? ((b.x>a.x)?'right':'left') : ((b.y>a.y)?'bottom':'top'));
- const toSide=edge.toSide||incomingSide(a,b);
+ const defaults=defaultArrowSides(a,b);
+ const fromSide=edge.fromSide||defaults.fromSide;
+ const toSide=edge.toSide||defaults.toSide;
  const endpoint=portPosition(b,toSide);
- const h=svg('circle',{cx:endpoint.x,cy:endpoint.y,r:11,fill:'#fff',stroke:'#2563eb','stroke-width':3,style:'cursor:grab',role:'button',tabindex:0,'aria-label':'矢印の接続先をドラッグして変更'},selection);
+ const h=svg('circle',{cx:endpoint.x,cy:endpoint.y,r:11,fill:'#fff',stroke:'#2563eb','stroke-width':3,style:'cursor:grab','aria-hidden':'true'},selection);
  h.addEventListener('pointerdown',ev=>{
   if(ev.button!==0)return;
   ev.stopPropagation();ev.preventDefault();
@@ -89,7 +103,23 @@ function renderSelectedArrowHandle(){
 }
 function selectDrawable(e,n){if(e.button!==0)return;e.stopPropagation();if(state.tool==='arrow'){if(n.type==='pen'){toast('ペン線には工程をつなげません');return}if(!state.edgeFrom){state.edgeFrom=n.id;toast('次に接続先のカードをクリック')}else{const from=state.edgeFrom;state.edgeFrom=null;if(from!==n.id&&!state.edges.some(edge=>edge.from===from&&edge.to===n.id)){mutate(()=>state.edges.push({id:id(),from,to:n.id}));toast('工程の依存関係を追加しました')}}render();return}
  if(state.tool!=='select')return;state.selected=n.id;const pt=toWorld(e);state.drag={mode:'node',nodeId:n.id,start:pt,origin:{x:n.x,y:n.y},before:serialize()};board.setPointerCapture(e.pointerId);render()}
-function renderInspector(){const e=$('#inspector');const n=nodeById(state.selected);if(!n){e.innerHTML=state.selected&&state.edges.some(x=>x.id===state.selected)?`<p class="empty-inspector">選択した矢印は依存関係です。</p><button class="button secondary" id="deleteSelected">${ico('trash')} この矢印を削除</button>`:'<p class="empty-inspector">キャンバスで要素を選ぶと、ここから内容を編集できます。</p>';$('#deleteSelected')?.addEventListener('click',removeSelected);return}
+function renderInspector(){
+ const e=$('#inspector');
+ const n=nodeById(state.selected);
+ if(!n){
+  const edge=state.edges.find(item=>item.id===state.selected);
+  if(!edge){e.innerHTML='<p class="empty-inspector">キャンバスで要素を選ぶと、ここから内容を編集できます。</p>';return}
+  const options=state.nodes.filter(node=>node.type==='task'&&node.id!==edge.from).map(node=>
+   `<option value="${escapeHtml(node.id)}"${node.id===edge.to?' selected':''}>${escapeHtml(node.text.split('\n')[0])}</option>`).join('');
+  e.innerHTML=`<label for="arrowDestination">矢印の接続先</label><select id="arrowDestination"><option value="" disabled${nodeById(edge.to)?.type==='task'?'':' selected'}>工程を選択</option>${options}</select><p class="empty-inspector">青い先端を別の工程カードにドラッグしても変更できます。</p><button class="button secondary" id="deleteSelected">${ico('trash')} この矢印を削除</button>`;
+  $('#arrowDestination').addEventListener('change',ev=>{
+   const source=nodeById(edge.from),target=nodeById(ev.target.value);
+   if(source&&target)retargetArrow(edge,target,edge.fromSide||defaultArrowSides(source,nodeById(edge.to)||target).fromSide);
+   $('#arrowDestination')?.focus();
+  });
+  $('#deleteSelected').addEventListener('click',removeSelected);
+  return;
+ }
  e.innerHTML=`<div class="field"><label for="inspectorText">内容（改行可能）</label><textarea id="inspectorText" rows="${n.type==='note'?4:2}">${escapeHtml(n.text||'')}</textarea></div>${n.type==='task'?`<div class="field-row"><div class="field"><label for="inspectorDuration">工期（日）</label><input id="inspectorDuration" type="number" min="1" max="180" value="${Math.max(1,Math.min(180,Number(n.duration)||1))}"></div><div class="field"><label for="inspectorStart">開始日（任意）</label><input id="inspectorStart" type="date" value="${escapeHtml(n.startDate||'')}"></div></div>`:''}<div class="inspector-actions"><button id="duplicateSelected" class="button secondary">${ico('copy')} 複製</button><button id="deleteSelected" class="button secondary">${ico('trash')} 削除</button></div>`;
  $('#inspectorText').addEventListener('change',ev=>mutate(()=>{n.text=ev.target.value.slice(0,500);const found=n.text.match(/(?:^|\n)\s*(\d+)\s*日/);if(found&&n.type==='task')n.duration=Math.min(Number(found[1]),180)}));
  $('#inspectorDuration')?.addEventListener('change',ev=>mutate(()=>{n.duration=Math.max(1,Math.min(180,Number(ev.target.value)||1));n.text=(n.text.split('\n')[0]||'工程')+`\n${n.duration}日`}));
@@ -108,38 +138,42 @@ function setTool(tool){
   const r=board.getBoundingClientRect();
   const center={x:(r.width/2-state.panX)/state.zoom-110,y:(r.height/2-state.panY)/state.zoom-62};
   newNode('note',center);
+  board.focus({preventScroll:true});
   toast('付箋を追加しました。ダブルクリックで編集できます');
   return;
  }
  state.tool=tool;state.edgeFrom=null;state.selected=null;render()
 }
-function newNode(type,p){const node={id:id(),type,x:Math.round(p.x),y:Math.round(p.y),w:type==='note'?220:type==='text'?225:222,h:type==='note'?124:type==='text'?70:115,text:type==='task'?'新しい工程\n1日':type==='note'?'メモ\nここに補足を記入':'テキストを入力',duration:type==='task'?1:undefined,color:type==='task'?'#2563eb':'#f59e0b'};mutate(()=>{state.nodes.push(node);state.selected=node.id});setTool('select');state.selected=node.id;render();if(type==='text')openInlineEdit(node)}
+function newNode(type,p){const node={id:id(),type,x:Math.round(p.x),y:Math.round(p.y),w:type==='note'?220:type==='text'?225:222,h:type==='note'?124:type==='text'?70:115,text:type==='task'?'新しい工程\n1日':type==='note'?'メモ\nここに補足を記入':'テキストを入力',duration:type==='task'?1:undefined,color:type==='task'?'#2563eb':'#f59e0b'};mutate(()=>{state.nodes.push(node);state.tool='select';state.edgeFrom=null;state.selected=node.id});if(type==='text')openInlineEdit(node)}
 function removeSelected(){if(!state.selected)return;mutate(()=>{state.nodes=state.nodes.filter(n=>n.id!==state.selected);state.edges=state.edges.filter(e=>e.id!==state.selected&&e.from!==state.selected&&e.to!==state.selected);state.draft=state.draft.filter(t=>t.sourceId!==state.selected);state.selected=null});toast('オブジェクトを削除しました')}
 function openInlineEdit(n){if(n.type==='pen')return;document.querySelector('.inline-editor')?.remove();const area=document.createElement('textarea');area.className='inline-editor';area.value=n.text;area.style.left=`${n.x*state.zoom+state.panX}px`;area.style.top=`${n.y*state.zoom+state.panY}px`;area.style.width=`${Math.max(125,n.w*state.zoom)}px`;area.style.height=`${Math.max(65,n.h*state.zoom)}px`;holder.appendChild(area);area.focus();area.select();let resolved=false;function finish(commitEdit){if(resolved)return;resolved=true;const newVal=area.value;area.remove();if(commitEdit&&n.text!==newVal)mutate(()=>{n.text=newVal.slice(0,500);const m=newVal.match(/(?:^|\n)\s*(\d+)\s*日/);if(m&&n.type==='task')n.duration=Math.max(1,Math.min(180,Number(m[1])))});else render()};area.addEventListener('blur',()=>finish(true));area.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Escape')finish(false);if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))finish(true)})}
 function fitBoard(){const rect=holder.getBoundingClientRect();if(!rect.width||!rect.height)return;const display=state.nodes.filter(n=>n.type!=='pen');if(!display.length){state.zoom=1;state.panX=rect.width/2-160;state.panY=rect.height/2-90;transform();return}const minX=Math.min(...display.map(n=>n.x),40),maxX=Math.max(...display.map(n=>n.x+n.w),800),minY=Math.min(...display.map(n=>n.y),50),maxY=Math.max(...display.map(n=>n.y+n.h),450);const w=maxX-minX,h=maxY-minY;state.zoom=Math.max(.35,Math.min(1.05,Math.min((rect.width-76)/w,(rect.height-100)/h)));state.panX=(rect.width-w*state.zoom)/2-minX*state.zoom;state.panY=(rect.height-h*state.zoom)/2-minY*state.zoom;transform()}
 function zoomTo(factor,cx,cy){const rect=board.getBoundingClientRect(),p={x:cx??rect.width/2,y:cy??rect.height/2};const next=Math.max(.25,Math.min(2.5,state.zoom*factor));state.panX=p.x-(p.x-state.panX)*next/state.zoom;state.panY=p.y-(p.y-state.panY)*next/state.zoom;state.zoom=next;transform()}
 function boardStart(e){if(e.button!==0&&e.button!==1)return;if(e.target.closest('.svg-node'))return;const isPan=state.tool==='hand'||state.space||e.button===1;const pt=toWorld(e);if(isPan){state.drag={mode:'pan',screen:getScreenPoint(e),origin:{x:state.panX,y:state.panY}};board.setPointerCapture(e.pointerId);return}if(state.tool==='pen'){const n={id:id(),type:'pen',points:[[pt.x,pt.y]],color:'#334155',stroke:3};state.drag={mode:'pen',nodeId:n.id,before:serialize()};state.nodes.push(n);board.setPointerCapture(e.pointerId);renderNodes();return}if(['task','note','text'].includes(state.tool)){newNode(state.tool,pt);return}if(state.tool==='arrow'){state.edgeFrom=null;renderEdges();return}state.selected=null;render()}
 function boardMove(e){if(!state.drag)return;const d=state.drag;const p=toWorld(e);if(d.mode==='connect'||d.mode==='reconnect'){d.point=p;d.targetId=dropTarget(state.nodes,p,d.from)?.id||null;renderNodes();renderEdges();return}if(d.mode==='node'){const n=nodeById(d.nodeId);if(n){n.x=Math.round(d.origin.x+(p.x-d.start.x));n.y=Math.round(d.origin.y+(p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='resize'){const n=nodeById(d.nodeId);if(n){n.w=Math.max(100,Math.round(d.origin.w+p.x-d.start.x));n.h=Math.max(70,Math.round(d.origin.h+p.y-d.start.y));renderNodes();renderEdges();transform()}}else if(d.mode==='pan'){const s=getScreenPoint(e);state.panX=d.origin.x+s.x-d.screen.x;state.panY=d.origin.y+s.y-d.screen.y;transform()}else if(d.mode==='pen'){const n=nodeById(d.nodeId);if(n){const last=n.points.at(-1);if(Math.hypot(last[0]-p.x,last[1]-p.y)>2){n.points.push([Math.round(p.x),Math.round(p.y)]);renderNodes();transform()}}}}
+function retargetArrow(edge,target,fromSide){
+ if(target.id===edge.to){render();return}
+ const reason=arrowRetargetError(state.edges,edge,target.id);
+ if(reason){
+  toast(reason==='duplicate'?'この工程はすでに接続されています':'循環する工程の接続は作成できません');
+  render();
+  return;
+ }
+ mutate(()=>{
+  edge.to=target.id;
+  edge.fromSide=fromSide;
+  edge.toSide=incomingSide(nodeById(edge.from),target);
+  state.selected=edge.id;
+ });
+ toast('矢印の接続先を変更しました');
+}
 function boardEnd(e){if(!state.drag)return;const d=state.drag;state.drag=null;
  if(d.mode==='reconnect'){
   const edge=state.edges.find(item=>item.id===d.edgeId);
   const target=edge&&e?.type==='pointerup'?dropTarget(state.nodes,toWorld(e),edge.from):null;
-  if(!edge||!target){render();return}
-  if(target.id===edge.to){render();return}
-  if(state.edges.some(other=>other.id!==edge.id&&other.from===edge.from&&other.to===target.id)){
-   toast('この工程はすでに接続されています');render();return
-  }
-  const remaining=state.edges.filter(other=>other.id!==edge.id);
-  if(wouldCreateCycle(remaining,edge.from,target.id)){
-   toast('循環する工程の接続は作成できません');render();return
-  }
-  mutate(()=>{
-   edge.to=target.id;
-   edge.fromSide=d.side;
-   edge.toSide=incomingSide(nodeById(edge.from),target);
-   state.selected=edge.id;
-  });
-  toast('矢印の接続先を変更しました');return;
+  if(edge&&target)retargetArrow(edge,target,d.side);
+  else render();
+  return;
  }
  if(d.mode==='connect'){
   const target=e?.type==='pointerup'?dropTarget(state.nodes,toWorld(e),d.from):null;
