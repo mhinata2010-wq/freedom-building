@@ -28,3 +28,27 @@ export function shouldDeleteDetachedArrow(eventType,start,end,hasTaskTarget,thre
  const distance=Math.hypot(end.x-start.x,end.y-start.y);
  return Number.isFinite(distance)&&distance>=threshold;
 }
+
+const renovationSteps = [
+  ['現地調査・採寸', 1],
+  ['養生・準備', 1],
+  ['解体・撤去', 2],
+  ['下地・設備工事', 3],
+  ['内装仕上げ', 3],
+  ['検査・引き渡し', 1],
+];
+
+export function createRenovationTemplate(nextId, x, y) {
+  const nodes = renovationSteps.map(([name, duration], index) => {
+    const row = Math.floor(index / 2);
+    const column = row % 2 ? 1 - index % 2 : index % 2;
+    return {
+      id: nextId(), type: 'task', x: x + column * 286, y: y + row * 162,
+      w: 222, h: 115, text: `${name}\n${duration}日`, duration, color: '#2563eb',
+    };
+  });
+  const edges = nodes.slice(1).map((node, index) => ({
+    id: nextId(), from: nodes[index].id, to: node.id,
+  }));
+  return {nodes, edges};
+}
