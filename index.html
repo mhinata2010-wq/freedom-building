@@ -24,7 +24,7 @@
         <button class="icon-btn" id="undoBtn" title="元に戻す ⌘Z" aria-label="元に戻す" data-icon="undo"></button>
         <button class="icon-btn" id="redoBtn" title="やり直す ⌘⇧Z" aria-label="やり直す" data-icon="redo"></button>
         <span class="vertical-line"></span>
-        <span class="save-status"><span class="save-dot"></span><span id="saveStatus">自動保存済み</span></span>
+        <span class="save-status"><span class="save-dot"></span><span id="saveStatus" role="status">自動保存済み</span></span>
         <button class="button secondary" id="exportMenuBtn" data-icon="download">書き出す</button>
         <button class="button primary" id="scheduleBtn" data-icon="chart">工程表を生成</button>
       </div>
@@ -34,10 +34,11 @@
       <button id="canvasTab" class="primary-tab active" data-icon="pen-tool">キャンバス</button>
       <button id="ganttTab" class="primary-tab" data-icon="chart">工程表</button>
     </nav>
+    <p id="storageWarning" class="storage-warning" role="alert" hidden>保存領域を利用できません。一時作業モードです。閉じる前に JSON を書き出してください。</p>
     <section id="projectDashboard" class="project-dashboard hidden" aria-label="プロジェクト一覧">
       <div class="projects-shell">
         <div class="projects-hero"><div><p class="eyebrow">PROJECTS</p><h1>工程プロジェクト</h1><p>現場ごとの工程を分けて管理。すべてこのブラウザ内に保存されます。</p></div><button id="createProjectBtn" class="button primary" data-icon="plus">新しいプロジェクト</button></div>
-        <div class="projects-toolbar"><label class="project-search"><span data-icon="search"></span><input id="projectSearch" type="search" placeholder="プロジェクトを検索" autocomplete="off"></label><span id="projectCount" class="project-count"></span></div>
+        <div class="projects-toolbar"><label class="project-search"><span data-icon="search"></span><input id="projectSearch" type="search" aria-label="プロジェクトを検索" placeholder="プロジェクトを検索" autocomplete="off"></label><span id="projectCount" class="project-count"></span></div>
         <div id="projectGrid" class="project-grid"></div>
       </div>
     </section>
@@ -67,12 +68,12 @@
             </div>
           </nav>
         </div>
-        <div class="gantt-holder hidden" id="ganttHolder"><div class="gantt-title"><div><small>GENERATED SCHEDULE</small><h2>工程表プレビュー</h2><p>生成した工程はドラフトです。工期と作業順序を確認してください。</p></div><div class="gantt-tools"><label>計画開始日 <input type="date" id="projectStart" /></label><button class="button secondary" id="ganttCsv" data-icon="download">CSV</button></div></div><div class="full-gantt" id="fullGantt"><div class="empty-gantt">右上の「工程表を生成」から工程表を作成できます。</div></div></div>
+        <div class="gantt-holder hidden" id="ganttHolder"><div class="gantt-title"><div><small>GENERATED SCHEDULE</small><h2>工程表プレビュー</h2><p>生成した工程はドラフトです。表は横にスクロールできます。</p></div><div class="gantt-tools"><label>計画開始日 <input type="date" id="projectStart" /></label><button class="button secondary" id="ganttCsv" data-icon="download">CSV</button></div></div><div class="full-gantt" id="fullGantt"><div class="empty-gantt">右上の「工程表を生成」から工程表を作成できます。</div></div></div>
       </main>
       <aside class="right-panel"><div class="right-head"><div><small class="eyebrow">PLANNING ASSISTANT</small><h2>工程の整理と確認</h2></div><div class="status-pill" id="scheduleStatus"><span></span>準備完了</div></div><div class="right-scroll"><section class="assistant-hero"><div class="hero-decoration" data-icon="sparkles"></div><p class="hero-kicker">FROM IDEAS TO SCHEDULE</p><h3>描いたアイデアを、<br/>実行できる工程表に。</h3><p>工程カードと矢印の接続から、編集可能な工程表を生成します。</p><button class="button hero-button" id="generateBtn" data-icon="chart">工程表を生成</button><span id="recognitionNote" class="mode-note">手描き線・付箋は工程として自動認識しません</span></section><section class="selection-panel" id="selectionPanel"><div class="section-head"><span>オブジェクトの編集</span></div><div id="inspector" class="inspector"><p class="empty-inspector">キャンバスで要素を選ぶと、ここから内容を編集できます。</p></div></section><section class="result-section"><div class="section-head"><span>生成した工程</span><span class="result-count" id="resultCount">未生成</span></div><div class="result-summary" id="resultSummary">工程カードを作成して「工程表を生成」を押すと、ここにドラフトが表示されます。</div><div id="resultList" class="result-list"></div><button id="openGanttBtn" class="button outline full hidden" data-icon="chart">工程表を大きく表示</button></section><section class="review-note"><span data-icon="shield"></span><p>予定を確定する前に、日数・前後関係・開始日を確認してください。</p></section></div></aside>
     </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <div id="modalBackdrop" class="modal-backdrop hidden"><div class="modal" role="dialog" aria-modal="true"><div class="modal-header"><h2 id="modalTitle">書き出し</h2><button id="modalClose" class="icon-btn" data-icon="close" aria-label="閉じる"></button></div><div id="modalContent"></div></div></div>
+    <dialog id="modalBackdrop" class="modal" aria-labelledby="modalTitle"><div class="modal-header"><h2 id="modalTitle">書き出し</h2><button id="modalClose" class="icon-btn" data-icon="close" aria-label="閉じる"></button></div><div id="modalContent"></div><p id="modalMessage" role="status"></p></dialog>
   </div>
   <script type="module" src="/src/app.js"></script>
 </body>

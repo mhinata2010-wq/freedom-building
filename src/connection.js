@@ -65,3 +65,18 @@ export function bendOffset(point, edge, source, target) {
   const {start,end}=edgeAnchors(edge,source,target);
   return {dx:point.x-(start.x+end.x)/2,dy:point.y-(start.y+end.y)/2};
 }
+
+/** Validate both creation and reconnection against the same graph rules. */
+export function changeConnection(nodes, edges, candidate) {
+  const source = nodes.find(n => n.id === candidate.from && n.type === 'task');
+  const target = nodes.find(n => n.id === candidate.to && n.type === 'task');
+  if (!source || !target) return {error: 'task'};
+  const others = edges.filter(edge => edge.id !== candidate.id);
+  if (others.some(edge => edge.from === source.id && edge.to === target.id)) return {error: 'duplicate'};
+  if (wouldCreateCycle(others, source.id, target.id)) return {error: 'cycle'};
+  return {edge: {
+    ...candidate,
+    fromSide: candidate.fromSide ?? incomingSide(target, source),
+    toSide: candidate.toSide ?? incomingSide(source, target)
+  }};
+}
