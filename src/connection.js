@@ -31,3 +31,37 @@ export function wouldCreateCycle(edges,from,to) {
   while(stack.length){const at=stack.pop();if(at===from)return true;if(visited.has(at))continue;visited.add(at);for(const edge of edges){if(edge.from===at)stack.push(edge.to)}}
   return false;
 }
+
+export function edgeAnchorSides(edge, source, target) {
+  return {
+    fromSide: edge.fromSide || incomingSide(target, source),
+    toSide: edge.toSide || incomingSide(source, target)
+  };
+}
+export function edgeAnchors(edge, source, target) {
+  const sides=edgeAnchorSides(edge,source,target);
+  return {start:portPosition(source,sides.fromSide),end:portPosition(target,sides.toSide),...sides};
+}
+export function edgeBendPoint(edge, source, target) {
+  const {start,end}=edgeAnchors(edge,source,target);
+  const mid={x:(start.x+end.x)/2,y:(start.y+end.y)/2};
+  return {x:mid.x+Number(edge.bend?.dx||0),y:mid.y+Number(edge.bend?.dy||0)};
+}
+export function routedEdgePath(edge, source, target) {
+  const {start,end,fromSide,toSide}=edgeAnchors(edge,source,target);
+  if(!edge.bend||(!Number(edge.bend.dx)&&!Number(edge.bend.dy)))return curveBetween(start,end,fromSide,toSide);
+  const bend=edgeBendPoint(edge,source,target);
+  const startDist=Math.max(24,Math.min(90,Math.hypot(bend.x-start.x,bend.y-start.y)*.34));
+  const endDist=Math.max(24,Math.min(90,Math.hypot(end.x-bend.x,end.y-bend.y)*.34));
+  const [sx,sy]=DIRECTIONS[fromSide]||DIRECTIONS.right;
+  const [tx,ty]=DIRECTIONS[toSide]||DIRECTIONS.left;
+  const c1={x:start.x+sx*startDist,y:start.y+sy*startDist};
+  const c2={x:start.x+(bend.x-start.x)*.72,y:start.y+(bend.y-start.y)*.72};
+  const c3={x:bend.x+(end.x-bend.x)*.28,y:bend.y+(end.y-bend.y)*.28};
+  const c4={x:end.x+tx*endDist,y:end.y+ty*endDist};
+  return `M${start.x} ${start.y} C${c1.x} ${c1.y},${c2.x} ${c2.y},${bend.x} ${bend.y} C${c3.x} ${c3.y},${c4.x} ${c4.y},${end.x} ${end.y}`;
+}
+export function bendOffset(point, edge, source, target) {
+  const {start,end}=edgeAnchors(edge,source,target);
+  return {dx:point.x-(start.x+end.x)/2,dy:point.y-(start.y+end.y)/2};
+}
