@@ -2,7 +2,7 @@
 
 **Draw freely. Turn the canvas into a construction schedule.**
 
-Figma/FigJam-like editing experience (not a copy and not feature parity): draggable task cards, freehand pen, sticky notes, text, resizable items, arrow dependencies, zoom/pan, keyboard shortcuts, undo/redo, local save, JSON/CSV/SVG/PNG export, and a Gantt preview.
+Figma/FigJam-like editing experience (not a copy and not feature parity): draggable task cards, freehand pen, sticky notes, text, resizable items, four-side drag-to-connect dependency handles, a collapsible/resizable bottom toolbar, arrow dependencies, zoom/pan, keyboard shortcuts, undo/redo, local save, JSON/CSV/SVG/PNG export, and a Gantt preview.
 
 ## Quick start (Node 20+, zero npm dependencies)
 
@@ -54,6 +54,8 @@ Full architecture and acceptance criteria: [docs/architecture.md](docs/architect
 
 - `index.html` and `styles.css`: responsive frontend shell
 - `src/app.js`: interactive canvas & UX
+- `src/connection.js`: connector ports, geometry, drop targets and cycle protection
+- `src/toolbar.js`: collapsible and drag-resizable horizontal canvas tool dock
 - `src/scheduler.js`: pure data extraction and scheduling functions
 - `api/analyze.js`: optional server-side AI endpoint (Vercel-compatible)
 - `server/dev.mjs`: zero-dependency local server
