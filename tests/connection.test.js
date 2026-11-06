@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {portPosition,dropTarget,incomingSide,curveBetween,wouldCreateCycle,edgeAnchors,edgeBendPoint,bendOffset,routedEdgePath} from '../src/connection.js';
+import {portPosition,dropTarget,incomingSide,curveBetween,wouldCreateCycle,edgeAnchors,edgeBendPoint,bendOffset,routedEdgePath,changeConnection} from '../src/connection.js';
 const a={id:'a',type:'task',x:10,y:20,w:200,h:100};
 const b={id:'b',type:'task',x:350,y:30,w:200,h:100};
 test('ports are anchored to all four sides',()=>{
@@ -35,4 +35,17 @@ test('movable edge bend stays relative to card midpoint',()=>{
  const offset=bendOffset({x:330,y:95},edge,a,b);assert.deepEqual(offset,{dx:50,dy:20});
  const anchors=edgeAnchors(edge,a,b);assert.deepEqual(anchors.start,{x:210,y:70});assert.deepEqual(anchors.end,{x:350,y:80});
  assert.match(routedEdgePath(edge,a,b),/^M210 70 C/);
+});
+
+test('reconnection ignores the edge being replaced and rejects duplicates, cycles and annotations',()=>{
+ const c={...b,id:'c',y:300};
+ const edges=[{id:'ab',from:'a',to:'b'}, {id:'bc',from:'b',to:'c'}];
+ assert.equal(changeConnection([a,b,c],edges,{id:'new',from:'a',to:'b'}).error,'duplicate');
+ assert.equal(changeConnection([a,b,c],edges,{id:'ab',from:'b',to:'c'}).error,'duplicate');
+ assert.equal(changeConnection([a,b,c],edges,{id:'ab',from:'c',to:'b'}).error,'cycle');
+ assert.equal(changeConnection([a,b,{...c,type:'note'}],edges,{id:'ab',from:'a',to:'c'}).error,'task');
+ const {edge}=changeConnection([a,b,c],edges,{id:'ab',from:'b',to:'a'});
+ assert.deepEqual(edge,{id:'ab',from:'b',to:'a',fromSide:'left',toSide:'right'});
+ assert.deepEqual(edges[0],{id:'ab',from:'a',to:'b'});
+ assert.notDeepEqual(edgeAnchors(edge,b,{...a,x:20}),edgeAnchors(edge,b,a));
 });

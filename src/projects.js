@@ -12,46 +12,53 @@ export function createProjectStore(storage, options={}) {
   if(!storage)throw new Error('storage is required');
   const now=options.now||(()=>new Date().toISOString());
   const makeId=options.makeId||(()=>`p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`);
-  const readIndex=()=>{const value=parse(storage.getItem(INDEX_KEY)||'[]');return Array.isArray(value)?value:[]};
+  const readIndex=()=>{
+    const raw=storage.getItem(INDEX_KEY);
+    if(raw===null)return [];
+    const value=parse(raw);
+    if(!Array.isArray(value)||value.some(p=>!p||typeof p.id!=='string'||typeof p.name!=='string'))throw new Error('invalid project index');
+    return value;
+  };
   const writeIndex=index=>storage.setItem(INDEX_KEY,JSON.stringify(index));
   const dataKey=id=>DATA_PREFIX+id;
   function stats(data){return {nodes:data.nodes.length,edges:data.edges.length,tasks:data.nodes.filter(n=>n?.type==='task').length}}
-  function touch(id,data,name){
-    const index=readIndex(),stamp=now();let item=index.find(p=>p.id===id);
-    if(!item){item={id,name:cleanName(name),createdAt:stamp,updatedAt:stamp,...stats(data)};index.unshift(item)}
-    else Object.assign(item,{name:cleanName(name??item.name),updatedAt:stamp,...stats(data)});
-    writeIndex(index);return item;
-  }
   function create(name,data){
     if(!validData(data))throw new Error('invalid project data');
     const id=makeId(),stamp=now(),item={id,name:cleanName(name),createdAt:stamp,updatedAt:stamp,...stats(data)};
+    const index=readIndex();
     storage.setItem(dataKey(id),JSON.stringify(clone(data)));
-    const index=readIndex();index.unshift(item);writeIndex(index);storage.setItem(CURRENT_KEY,id);return item;
+    index.unshift(item);
+    try{writeIndex(index)}catch(error){storage.removeItem(dataKey(id));throw error}
+    return item;
   }
-  function list(){return readIndex().sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))}
+  function list(){return readIndex().map(item=>{const data=load(item.id);return data?{...item,...stats(data),updatedAt:[item.updatedAt,data.savedAt].filter(x=>typeof x==='string').sort().at(-1)}:item}).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))}
   function load(id){const value=parse(storage.getItem(dataKey(id)));return validData(value)?value:null}
   function save(id,data){
     if(!validData(data))throw new Error('invalid project data');
     const item=readIndex().find(p=>p.id===id);if(!item)throw new Error('project not found');
-    storage.setItem(dataKey(id),JSON.stringify(clone(data)));return touch(id,data,item.name);
+    const savedAt=now();
+    storage.setItem(dataKey(id),JSON.stringify({...data,savedAt}));
+    return {...item,...stats(data),updatedAt:savedAt};
   }
   function rename(id,name){const index=readIndex(),item=index.find(p=>p.id===id);if(!item)return null;item.name=cleanName(name);item.updatedAt=now();writeIndex(index);return item}
   function setCurrent(id){if(!readIndex().some(p=>p.id===id))return false;storage.setItem(CURRENT_KEY,id);return true}
-  function current(){const id=storage.getItem(CURRENT_KEY);return readIndex().find(p=>p.id===id)||null}
-  function remove(id){const index=readIndex().filter(p=>p.id!==id);storage.removeItem(dataKey(id));writeIndex(index);if(storage.getItem(CURRENT_KEY)===id){if(index[0])storage.setItem(CURRENT_KEY,index[0].id);else storage.removeItem(CURRENT_KEY)}return index}
+  function get(id){return readIndex().find(p=>p.id===id)??null}
+  function current(){return get(storage.getItem(CURRENT_KEY))}
+  function remove(id){const index=readIndex().filter(p=>p.id!==id);writeIndex(index);storage.removeItem(dataKey(id));if(storage.getItem(CURRENT_KEY)===id){if(index[0])storage.setItem(CURRENT_KEY,index[0].id);else storage.removeItem(CURRENT_KEY)}return index}
   function duplicate(id){const item=readIndex().find(p=>p.id===id),data=load(id);if(!item||!data)return null;return create(`${item.name} のコピー`,data)}
   function bootstrap(defaultData){
-    let index=readIndex();
-    if(!index.length){
-      const legacy=parse(storage.getItem(LEGACY_KEY));const seed=validData(legacy)?legacy:defaultData;
-      const created=create('新しい工程計画',seed);return {project:created,data:load(created.id),migrated:validData(legacy)};
+    const index=readIndex();
+    if(storage.getItem(INDEX_KEY)===null){
+      const raw=storage.getItem(LEGACY_KEY);
+      const legacy=parse(raw);
+      if(raw!==null&&!validData(legacy))throw new Error('invalid legacy project');
+      const project=create('新しい工程計画',legacy??defaultData);
+      return {project,data:load(project.id),migrated:legacy!==null};
     }
-    let project=current();if(!project){project=index[0];setCurrent(project.id)}
-    let data=load(project.id);
-    if(!validData(data)){data=clone(defaultData);storage.setItem(dataKey(project.id),JSON.stringify(data));touch(project.id,data,project.name)}
-    return {project,data,migrated:false};
+    const project=current()??index[0]??null;
+    return {project,data:project?load(project.id):null,migrated:false};
   }
-  return {bootstrap,list,load,save,create,rename,remove,duplicate,setCurrent,current};
+  return {bootstrap,list,load,save,create,rename,remove,duplicate,setCurrent,current,get};
 }
 
 export function createMemoryStorage(seed={}) {
