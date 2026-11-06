@@ -1,81 +1,57 @@
-# FIELDNOTE | Sketch to Schedule
+# FIELDNOTE | freedom-building
 
-**Draw freely. Turn the canvas into a construction schedule.**
+**自由に工程カードを配置して、AI・外部APIなしでガントチャートを生成する建築工程表MVP。**
 
-Figma/FigJam-like editing experience (not a copy and not feature parity): draggable task cards, freehand pen, sticky notes, text, resizable items, four-side drag-to-connect dependency handles, a collapsible/resizable bottom toolbar, arrow dependencies, zoom/pan, keyboard shortcuts, undo/redo, local save, JSON/CSV/SVG/PNG export, and a Gantt preview.
-
-## Quick start (Node 20+, zero npm dependencies)
+## 起動方法（Node.js 20以上、外部パッケージ不要）
 
 ```bash
 npm run dev
 # http://localhost:4173
-npm test
 npm run check
+npm test
 ```
 
-No API key required for the core interface. The browser fallback **is not AI**: it uses explicit task cards, durations and arrows. It does **not** claim to understand handwriting.
+初期設定やAPIキーは一切不要です。画面と工程生成はブラウザ内で動作し、データはブラウザの `localStorage` に保存します。CSV/JSON/PNG/SVG形式で書き出し可能です。静的サイトとしての配信にも対応します。
 
-### Enable vision AI
+## 基本操作
 
-```bash
-cp .env.example .env
-# Add OPENAI_API_KEY=... to .env (server only)
-npm run dev
-```
+1. 下部の横型ツールバーから **工程カード** を選び、キャンバスをクリックして工程を作成。
+2. カードをダブルクリックして工程名・日数を入力（例: `基礎工事` と `5日`）。
+3. カードの四辺に現れる接続ハンドルから別のカードへドラッグして、工程の前後関係を設定。
+4. **工程表を生成** をクリック。日時・先行工程を計算した編集可能なドラフトが右側に表示される。
+5. 期間や順序を確認してから **工程表** タブでガントチャートを表示。CSVを保存可能。
 
-Click **AIで工程表を生成**. The browser sends a canvas PNG + structured shape/arrow data including grouped pen-stroke regions to `/api/analyze`, which calls OpenAI's Responses API with structured JSON output. It extracts candidate tasks and returns a **draft**, never commits inferred dependencies automatically. The draft is reviewed in the right sidebar and every task can be edited and confirmed.
+**重要な制約:** 手書き線・画像・付箋の文章を自動で文字認識する機能はありません。工程カード、または日数（例 `3日`）を明示したテキストから工程を抽出します。日数未設定の工程カードは仮に1日とし、確認が必要な状態で生成します。自由描画自体は継続して使えます。
 
-**Security**: Never put OPENAI_API_KEY in frontend code or GitHub. No login or durable server-side rate limit is implemented, so **do not expose an unprotected public AI endpoint**. Before a real public launch add authentication, proper per-user quotas, billing controls, durable rate limits, and consent for uploads. The MVP stores board data in this browser's localStorage only; other devices cannot see it.
+## 実装範囲
 
-## Functional scope
-
-| Item | State |
+| 機能 | 状態 |
 |---|---|
-| SVG canvas with cards, notes, freehand, connected arrows, text, drag, resize | MVP implemented |
-| Pan, zoom, toolbar, keyboard shortcuts, undo/redo | MVP implemented |
-| Automatic extraction from *typed card text + explicit arrows* | Local rules implemented |
-| Screenshot + vector metadata to vision model | Requires server `OPENAI_API_KEY` |
-| Human review for durations, dependencies and start dates | MVP implemented |
-| Gantt preview, CSV/JSON/SVG/PNG export | MVP implemented |
-| Autosave | Browser localStorage only |
-| Auth, sync, multiuser, print layout, calendar exceptions, holiday/weekend scheduling | Not implemented |
-| Handwriting recognition grouped by spatial proximity | Experimental with AI key; needs evaluation and corrections |
-| Production-grade construction scheduling including resource constraints | Not implemented |
+| SVGキャンバス: 工程カード、自由描画、付箋、テキスト、ドラッグ・サイズ変更 | 実装済み |
+| 下部の横型ツールバー、折りたたみ、幅変更、キーボードショートカット | 実装済み |
+| カード上下左右からの矢印接続、重複・循環参照の防止 | 実装済み |
+| 工程カード・日数・明示的な矢印からドラフト生成 | 実装済み・ブラウザ内のみ |
+| 依存関係を使った日付計算とガントチャート、CSV/JSON/SVG/PNG出力 | 実装済み |
+| 自動保存 | 同じブラウザの`localStorage`のみ |
+| 手書き文字認識、AI推論 | 非対応（今回の構成では使用しない） |
+| ユーザー認証、DB同期、共同編集、施工現場向けの工休日・天候・職人リソース調整 | 未実装 |
 
-The scheduler uses **calendar days**, not business days; it assumes a successor starts the day after a predecessor finishes. Real project calendars, holidays, weather downtime, lead times and parallel resource conflicts are future work.
+日付計算は **暦日** ベースで、先行工程が終了した翌日から後続工程が開始する仕様です。祝日や休工日、職人の重複割り当ては考慮されません。
 
-## Preview
+## ファイル
 
-Run `npm run dev` to open the current UI. Screenshot assets are not part of this source commit.
+- `index.html` / `styles.css`: UI
+- `src/app.js`: キャンバス、編集、工程の生成操作
+- `src/scheduler.js`: ルールベース工程抽出・依存計算
+- `src/connection.js`: 4辺ポート、接続判定と循環検出
+- `src/toolbar.js`: 可変幅の下部ツールバー
+- `server/dev.mjs`: ローカル開発用の静的ファイルサーバー（APIルートなし）
+- `tests/`: 自動テスト
 
-Full architecture and acceptance criteria: [docs/architecture.md](docs/architecture.md).
+設計上の制約と受け入れ条件: [docs/architecture.md](docs/architecture.md)
 
-## Files
+## セキュリティ・運用
 
-- `index.html` and `styles.css`: responsive frontend shell
-- `src/app.js`: interactive canvas & UX
-- `src/connection.js`: connector ports, geometry, drop targets and cycle protection
-- `src/toolbar.js`: collapsible and drag-resizable horizontal canvas tool dock
-- `src/scheduler.js`: pure data extraction and scheduling functions
-- `api/analyze.js`: optional server-side AI endpoint (Vercel-compatible)
-- `server/dev.mjs`: zero-dependency local server
-- `tests/scheduler.test.js`: regression tests
+外部API呼び出し、課金、サーバーへのプロジェクト送信はありません。ただし、共有端末の `localStorage` にプロジェクトが残るため、個人情報や機密の図面は入力しないでください。静的公開する際は個人情報を埋め込まず、同期や権限管理を実装していないことを明示してください。
 
-## Deploy
-
-This repository is currently **public**. No credentials are included; do not commit `.env` or expose an unauthenticated AI endpoint.
-
-For local development: `npm run dev`. The browser rule-based fallback runs without a key. To test vision AI locally, set `OPENAI_API_KEY` in an untracked `.env` file. Production deployment requires authentication, durable rate limits and budget controls before enabling the AI endpoint.
-
-The development branch should be reviewed through a pull request before merging to `main`.
-
-### Next milestones
-
-1. Improve handwritten OCR grouping, labeled canvas regions, and uncertainty UX; run accuracy evaluations.
-2. Manual link editing + dependency cycle editor and calendars (weather and workdays).
-3. IndexedDB/DB persistence, collaboration, audit history, role-based access.
-4. Field tests with construction supervisors and usability benchmarks.
-
-### Design rationale
-
-Figma's UI is a reference for direct manipulation and tool discoverability, not an attempt to copy Figma's branded assets or achieve arbitrary “90% feature parity.” This zero-dependency SVG canvas avoids production licensing constraints of certain SDKs. Plan to test interactions on actual jobsite hardware before choosing a heavier canvas engine.
+`main` は直接変更せず、Feature BranchからPRを通じて取り込みます。
