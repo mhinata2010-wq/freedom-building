@@ -17,8 +17,8 @@
       </div>
       <span class="top-divider"></span>
       <div class="project-heading">
-        <div class="breadcrumb"><span>Workspace</span><span class="crumb-chevron">›</span><strong>新しい工程計画</strong><span class="status-dot" title="ローカルに自動保存"></span></div>
-        <small>キャンバス上で工程のアイデアを整理</small>
+        <div class="breadcrumb"><span>Workspace</span><span class="crumb-chevron">›</span><strong id="currentProjectName">新しい工程計画</strong><span class="status-dot" title="ローカルに自動保存"></span></div>
+        <small id="projectSubtitle">キャンバス上で工程のアイデアを整理</small>
       </div>
       <div class="top-actions">
         <button class="icon-btn" id="undoBtn" title="元に戻す ⌘Z" aria-label="元に戻す" data-icon="undo"></button>
@@ -29,16 +29,27 @@
         <button class="button primary" id="scheduleBtn" data-icon="chart">工程表を生成</button>
       </div>
     </header>
-    <div class="workspace">
+    <nav class="primary-tabs" aria-label="メインナビゲーション">
+      <button id="projectsTab" class="primary-tab" data-icon="folder">プロジェクト</button>
+      <button id="canvasTab" class="primary-tab active" data-icon="pen-tool">キャンバス</button>
+      <button id="ganttTab" class="primary-tab" data-icon="chart">工程表</button>
+    </nav>
+    <section id="projectDashboard" class="project-dashboard hidden" aria-label="プロジェクト一覧">
+      <div class="projects-shell">
+        <div class="projects-hero"><div><p class="eyebrow">PROJECTS</p><h1>工程プロジェクト</h1><p>現場ごとの工程を分けて管理。すべてこのブラウザ内に保存されます。</p></div><button id="createProjectBtn" class="button primary" data-icon="plus">新しいプロジェクト</button></div>
+        <div class="projects-toolbar"><label class="project-search"><span data-icon="search"></span><input id="projectSearch" type="search" placeholder="プロジェクトを検索" autocomplete="off"></label><span id="projectCount" class="project-count"></span></div>
+        <div id="projectGrid" class="project-grid"></div>
+      </div>
+    </section>
+    <div class="workspace" id="workspaceShell">
       <aside class="left-panel">
-        <div class="panel-head"><span class="panel-title">プロジェクト</span><button class="subtle-icon" id="newBoardBtn" data-icon="plus" title="新しい工程カードを追加"></button></div>
-        <div class="project-card"><div class="project-card-icon" data-icon="layers"></div><div><strong>新しい工程計画</strong><small>ドラフト · ローカル保存</small></div><span class="pill-mini">MVP</span></div>
-        <div class="section-head"><span>レイヤー</span><span class="section-count" id="layerCount">0</span></div>
+        <div class="panel-head"><span class="panel-title">レイヤー</span><button class="subtle-icon" id="newBoardBtn" data-icon="plus" title="新しい工程カードを追加"></button></div>
+        <div class="section-head layer-section-head"><span>キャンバス要素</span><span class="section-count" id="layerCount">0</span></div>
         <div id="layerList" class="layer-list"></div>
         
       </aside>
       <main class="main-area">
-        <div class="canvas-topbar"><div class="view-switch"><button id="canvasTab" class="view-tab active" data-icon="pen-tool">キャンバス</button><button id="ganttTab" class="view-tab" data-icon="chart">工程表</button></div><div class="canvas-top-actions"><span class="header-hint" id="activeHint">ダブルクリックでテキストを編集できます</span><button class="subtle-icon" id="clearSelectionBtn" data-icon="expand" title="キャンバスを中央に戻す"></button></div></div>
+        <div class="canvas-topbar"><div class="canvas-context"><span class="context-dot"></span><strong id="canvasContextLabel">自由編集キャンバス</strong></div><div class="canvas-top-actions"><span class="header-hint" id="activeHint">ダブルクリックでテキストを編集できます</span><button class="subtle-icon" id="clearSelectionBtn" data-icon="expand" title="キャンバスを中央に戻す"></button></div></div>
         <div class="stage-holder" id="stageHolder"><svg id="board" xmlns="http://www.w3.org/2000/svg" aria-label="自由編集キャンバス" role="application" tabindex="0"><defs><pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.05" fill="#d1d8e3" /></pattern><marker id="arrowHead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L8 4 L0 8 Z" fill="#94a3b8"/></marker></defs><rect id="stageBackground" x="0" y="0" width="100%" height="100%" fill="url(#dotGrid)"/><g id="viewport"><g id="edges"></g><g id="shapes"></g><g id="selection"></g></g></svg><div class="canvas-watermark"><span class="watermark-square"></span> FIELDNOTE CANVAS <span class="watermark-secondary">/ FREEFORM MODE</span></div><div class="canvas-bottom-left"><span class="keyboard-chip">SPACE</span> 移動 <span class="shortcut-sep">·</span> <span class="keyboard-chip">⌘</span> + スクロールで拡大</div><div class="zoom-control"><button id="zoomOut" title="縮小" data-icon="minus"></button><span id="zoomText">100%</span><button id="zoomIn" title="拡大" data-icon="plus"></button><button id="zoomReset" title="リセット" data-icon="maximize"></button></div></div>
         <div class="canvas-dock-row" id="canvasDockRow">
           <nav class="canvas-toolbar" id="canvasToolbar" aria-label="キャンバス描画ツール" style="--dock-width: 700px">
