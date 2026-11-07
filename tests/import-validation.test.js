@@ -48,3 +48,12 @@ test('oversized and malformed arrays are rejected',()=>{
  assert.throws(()=>validateImportedProject({...data,edges:'not-an-array'}));
  assert.throws(()=>validateImportedProject({...data,draft:'not-an-array'}));
 });
+
+test('valid work calendar survives JSON restoration without losing holidays',()=>{
+ const data={...backup(),workCalendar:{workdays:[1,2,3,4,5],holidays:['2026-11-11']}};
+ assert.deepEqual(validateImportedProject(data).workCalendar,data.workCalendar);
+});
+test('malformed calendar cannot replace the current project',()=>{
+ const data={...backup(),workCalendar:{workdays:[],holidays:[]}};
+ assert.throws(()=>validateImportedProject(data));
+});
