@@ -50,5 +50,12 @@ export function validateImportedProject(value) {
   if(t.dependsOn!==undefined&&(!Array.isArray(t.dependsOn)||t.dependsOn.some(id=>!validId(id))))invalid('先行工程の形式が不正です: '+t.id);
   if(t.startDate!==undefined&&t.startDate!==''&&!dateValid(t.startDate))invalid('ドラフト日付が不正です: '+t.id);
  }
- return {nodes:value.nodes.slice(),edges:value.edges.slice(),draft:draft.slice(),projectStart:value.projectStart};
+ let calendar;
+ if(value.workCalendar!==undefined){
+  const wc=value.workCalendar;
+  if(!wc||typeof wc!=='object'||Array.isArray(wc)||!Array.isArray(wc.workdays)||wc.workdays.length>7||!wc.workdays.length||wc.workdays.some(n=>!Number.isInteger(n)||n<0||n>6)||new Set(wc.workdays).size!==wc.workdays.length)invalid('休工日の曜日設定が不正です');
+  if(!Array.isArray(wc.holidays)||wc.holidays.length>500||wc.holidays.some(d=>!dateValid(d)))invalid('個別休工日が不正です');
+  calendar={workdays:[...wc.workdays],holidays:[...wc.holidays]};
+ }
+ return {nodes:value.nodes.slice(),edges:value.edges.slice(),draft:draft.slice(),projectStart:value.projectStart,workCalendar:calendar};
 }
