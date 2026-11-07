@@ -24,7 +24,7 @@
         <button class="icon-btn" id="undoBtn" title="元に戻す ⌘Z" aria-label="元に戻す" data-icon="undo"></button>
         <button class="icon-btn" id="redoBtn" title="やり直す ⌘⇧Z" aria-label="やり直す" data-icon="redo"></button>
         <span class="vertical-line"></span>
-        <span class="save-status"><span class="save-dot"></span><span id="saveStatus">自動保存済み</span></span>
+        <span class="save-status" aria-live="polite"><span class="save-dot"></span><span id="saveStatus" role="status">自動保存済み</span><button type="button" id="retrySaveBtn" class="save-retry hidden" aria-label="保存を再試行">再試行</button></span>
         <button class="button secondary" id="exportMenuBtn" data-icon="download">書き出す</button>
         <button class="button primary" id="aiButton" data-icon="sparkles">AIで工程表を生成</button>
       </div>
