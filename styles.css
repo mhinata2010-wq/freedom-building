@@ -50,3 +50,13 @@
 .calendar-holiday-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eef2f7}
 #workCalendarBtn{flex-shrink:0}
 @media(max-width:680px){.canvas-topbar{padding:0 8px}.canvas-top-actions{gap:5px}#workCalendarBtn{padding:0 7px;font-size:10px}.canvas-top-actions #addTemplateBtn{display:none}}
+
+/* Autosave errors remain visible with a keyboard-accessible retry action. */
+.save-status.is-error{color:#b91c1c}.save-status.is-error .save-dot{background:#ef4444}.save-retry{border:1px solid #ef4444;border-radius:6px;background:#fff;color:#b91c1c;padding:3px 7px;font-size:11px;white-space:nowrap}.save-retry:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+/* Paged Gantt controls. */
+.gantt-window-nav{position:sticky;top:0;left:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:#fff;border-bottom:1px solid #e5e7eb;width:100%;min-width:320px}
+.gantt-window-nav button{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font-size:11px;white-space:nowrap}
+.gantt-window-nav button:disabled{opacity:.4;cursor:default}
+.gantt-window-nav button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.gantt-window-range{font-size:11px;color:#475569;white-space:nowrap}
+@media(max-width:600px){.gantt-window-nav{min-width:0;gap:4px;padding:7px 5px}.gantt-window-nav button{padding:5px 6px;font-size:10px}.gantt-window-range{font-size:10px}}
