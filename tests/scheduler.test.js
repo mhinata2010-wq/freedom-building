@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {addDays,durationFromText,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,groupInkStrokes} from '../src/scheduler.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {addDays,durationFromText,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,groupInkStrokes,validateScheduleDependencies} from '../src/scheduler.js';
 test('duration recognizes Japanese and English durations',()=>{assert.equal(durationFromText('基礎工事 ３日'),3);assert.equal(durationFromText('配線 2営業日'),2);assert.equal(durationFromText('inspection 4 days'),4);assert.equal(durationFromText('検査'),null)});
 test('dates handle month end and leap day',()=>{assert.equal(addDays('2028-02-28',1),'2028-02-29');assert.equal(addDays('2026-11-30',1),'2026-12-01')});
 test('extracts structured cards and explicit arrows only',()=>{const n=[{id:'a',type:'task',text:'基礎工事\n3日'},{id:'b',type:'task',text:'配線\n2日'},{id:'c',type:'note',text:'雨天に注意'}];const t=extractDraft(n,[{from:'a',to:'b'}]);assert.equal(t.length,2);assert.deepEqual(t[1].dependsOn,['a']);assert.equal(t[0].duration,3)});
@@ -7,3 +7,31 @@ test('does not silently accept inferred AI dependency',()=>{const nodes=[{id:'a'
 test('cycle detection produces a warning without infinite recursion',()=>{const t=[{id:'a',title:'A',duration:1,dependsOn:['b']},{id:'b',title:'B',duration:1,dependsOn:['a']}];const s=scheduleTasks(t,'2026-11-05');assert.ok(s.warnings.length>0)});
 
 test('nearby handwriting strokes are grouped with stable IDs',()=>{const n=[{id:'p1',type:'pen',points:[[10,10],[20,20]]},{id:'p2',type:'pen',points:[[24,12],[32,20]]},{id:'p3',type:'pen',points:[[600,700],[610,720]]}];const g=groupInkStrokes(n);assert.equal(g.length,2);assert.ok(g.some(x=>x.strokeIds.length===2));assert.deepEqual(groupInkStrokes(n),g)});
+
+test('CSV export prevents formula-starting title, assignee and dependency fields',()=>{
+ const tasks=[
+  {id:'a',title:'=1+1',duration:1,start:'2026-11-09',end:'2026-11-09',dependsOn:[],assignee:' @manager',confirmed:false,needsReview:false},
+  {id:'b',title:'+内装工事',duration:2,start:'2026-11-10',end:'2026-11-11',dependsOn:['a'],assignee:'-作業担当',confirmed:true,needsReview:false},
+  {id:'c',title:'通常工事',duration:1,start:'2026-11-12',end:'2026-11-12',dependsOn:['b'],assignee:'=1+1',confirmed:true,needsReview:false}
+ ];
+ const csv=scheduleToCSV(tasks);
+ assert.equal(csv.charCodeAt(0),0xFEFF);
+ for(const value of ["'=1+1","' @manager","'+内装工事","'-作業担当"]) assert.ok(csv.includes(value),value);
+ assert.ok(csv.includes('"要確認"'));
+});
+
+test('CSV quoting and ordinary schedule fields are preserved',()=>{
+ const csv=scheduleToCSV([{id:'z',title:'キッチン,"A"\n修理',duration:2,start:'2026-11-09',end:'2026-11-10',dependsOn:[],assignee:'施工班',confirmed:true,needsReview:false}]);
+ assert.ok(csv.includes('"キッチン,""A""\n修理"'));
+ assert.ok(csv.includes('"2026-11-09"'));
+ assert.ok(csv.includes('"施工班"'));
+ assert.ok(csv.endsWith(String.fromCharCode(13,10)));
+});
+test('dependency validation blocks cycles, missing references and duplicate IDs',()=>{
+ const t=(id,dependsOn=[])=>({id,title:id,duration:1,dependsOn});
+ assert.deepEqual(validateScheduleDependencies([t('a'),t('b',['a'])]),[]);
+ assert.ok(validateScheduleDependencies([t('a',['b']),t('b',['a'])]).some(s=>s.includes('循環')));
+ assert.ok(validateScheduleDependencies([t('a',['b']),t('b',['c']),t('c',['a'])]).some(s=>s.includes('循環')));
+ assert.ok(validateScheduleDependencies([t('a',['missing'])]).some(s=>s.includes('存在しない')));
+ assert.ok(validateScheduleDependencies([t('a'),t('a')]).some(s=>s.includes('重複')));
+});

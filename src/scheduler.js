@@ -28,6 +28,31 @@ export function normalizeAiDraft(aiTasks,nodes,edges){
  for(const t of output){t.dependsOn=[...new Set(t.dependsOn)].filter(id=>ids.has(id));if(t.dependsOn.some(id=>!edgesSet.has(`${id}:${t.id}`))){t.needsReview=true;t.reason=[t.reason,'AIが推定した依存関係を要確認'].filter(Boolean).join(' / ')}}
  return output;
 }
+/** Block exporting schedules with broken or cyclic predecessor references. */
+export function validateScheduleDependencies(rawTasks) {
+ if (!Array.isArray(rawTasks)) return ['工程データが不正です'];
+ const byId=new Map(), errors=new Set();
+ for (const task of rawTasks) {
+  if (!task || typeof task.id!=='string' || !task.id.trim()) {errors.add('工程IDが不正です');continue}
+  if (byId.has(task.id)) errors.add(`工程IDが重複しています: ${task.id}`);
+  byId.set(task.id,task);
+ }
+ const done=new Set(), visiting=new Set();
+ function visit(id) {
+  if (visiting.has(id)) {errors.add(`先行工程が循環しています: ${byId.get(id)?.title||id}`);return}
+  if (done.has(id)) return;
+  visiting.add(id);
+  const task=byId.get(id);
+  for (const dep of Array.isArray(task.dependsOn)?task.dependsOn:[]) {
+   if (!byId.has(dep)) {errors.add(`存在しない先行工程: ${task.title||id} → ${dep}`);continue}
+   visit(dep);
+  }
+  visiting.delete(id);
+  done.add(id);
+ }
+ for (const id of byId.keys()) visit(id);
+ return [...errors];
+}
 export function scheduleTasks(rawTasks, projectStartISO){
  const projectStart=parseISO(projectStartISO)?projectStartISO:todayISO();
  const valid=rawTasks.map(t=>({...t,dependsOn:[...new Set(Array.isArray(t.dependsOn)?t.dependsOn:[])]}));
@@ -55,4 +80,4 @@ export function groupInkStrokes(nodes){
   return {id,type:'ink',x,y,w:Math.max(...group.map(s=>s.maxX))-x,h:Math.max(...group.map(s=>s.maxY))-y,text:'',strokeIds:group.map(s=>s.id)}
  });
 }
-export function scheduleToCSV(tasks){const h=['工程名','日数','開始日','終了日','先行工程','担当者','要確認'];const map=new Map(tasks.map(t=>[t.id,t.title]));const q=v=>'"'+String(v??'').replaceAll('"','""')+'"';return '\ufeff'+[h,...tasks.map(t=>[t.title,t.duration,t.start,t.end,t.dependsOn.map(d=>map.get(d)||d).join(' / '),t.assignee,t.needsReview?'要確認':''])].map(row=>row.map(q).join(',')).join('\r\n')+'\r\n'}
+export function scheduleToCSV(tasks){const h=['工程名','日数','開始日','終了日','先行工程','担当者','要確認'];const map=new Map(tasks.map(t=>[t.id,t.title]));const q=v=>{const raw=String(v??'');const safe=/^[\s\u200B\uFEFF]*[=+@-]/u.test(raw)?"'"+raw:raw;return '"'+safe.replaceAll('"','""')+'"'};return '\ufeff'+[h,...tasks.map(t=>[t.title,t.duration,t.start,t.end,t.dependsOn.map(d=>map.get(d)||d).join(' / '),t.assignee,(t.confirmed!==true||t.needsReview===true)?'要確認':''])].map(row=>row.map(q).join(',')).join('\r\n')+'\r\n'}
