@@ -27,3 +27,8 @@ test('successful localStorage writes preserve full state',()=>{
  assert.equal(trySaveProject(storage,'fieldnote_mvp_v1',json),true);
  assert.equal(JSON.parse(store.get('fieldnote_mvp_v1')).stale,true);
 });
+
+test('work calendar is retained with the saved snapshot',()=>{
+ const input={...example(),workCalendar:{workdays:[1,2,3,4,5],holidays:['2026-11-11']}};
+ assert.deepEqual(JSON.parse(serializeProjectState(input)).workCalendar,input.workCalendar);
+});
