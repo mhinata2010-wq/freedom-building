@@ -5,7 +5,7 @@ export function restoredProjectFlags(initial, loadedFromStorage=false) {
  return {mode,stale};
 }
 export function serializeProjectState(state) {
- return JSON.stringify({nodes:state.nodes,edges:state.edges,draft:state.draft,projectStart:state.projectStart,mode:state.mode,stale:Boolean(state.stale)});
+ return JSON.stringify({nodes:state.nodes,edges:state.edges,draft:state.draft,projectStart:state.projectStart,workCalendar:state.workCalendar,mode:state.mode,stale:Boolean(state.stale)});
 }
 export function trySaveProject(storage,key,json) {
  try{storage.setItem(key,json);return true}catch{return false}
