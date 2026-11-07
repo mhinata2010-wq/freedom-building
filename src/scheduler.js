@@ -24,10 +24,20 @@ export function workdayEnd(start,duration,calendar){
  for(let i=1;i<duration;i++)end=nextWorkingDay(addDays(end,1),calendar);
  return end;
 }
-export function durationFromText(text) {const v=String(text||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));const match=v.match(/(?:^|[^0-9])([1-9]\d{0,2})\s*(?:営業日|日間|日|days?|d\b)/i);return match?Math.min(Number(match[1]),180):null}
+function normalizeDurationText(text){return String(text??'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/．/g,'.')}
+function hasPartialDay(text){const v=normalizeDurationText(text);return /(?:^|[^\d])\d+\.\d+\s*(?:営業日|日間|日)/i.test(v)||/半日/.test(v)}
+function hasWeekDuration(text){return /(?:^|[^\d.])\d{1,2}\s*(?:週間|週)/.test(normalizeDurationText(text))}
+export function durationFromText(text){
+ const v=normalizeDurationText(text);
+ if(hasPartialDay(v))return null;
+ const week=v.match(/(?:^|[^\d.])([1-9]\d?)\s*(?:週間|週)/);
+ if(week)return Number(week[1])*7<=365?Number(week[1])*7:null;
+ const day=v.match(/(?:^|[^\d.])([1-9]\d{0,2})\s*(?:営業日|日間|日|days?|d\b)(?![前後])/i);
+ return day&&Number(day[1])<=365?Number(day[1]):null;
+}
 export function updateTaskDurationText(text, duration) {
  const value=Number(duration);
- if(!Number.isInteger(value)||value<1||value>180)throw new RangeError('工期は1〜180日で入力してください');
+ if(!Number.isInteger(value)||value<1||value>365)throw new RangeError('工期は1〜365日で入力してください');
  const lines=String(text??'').split(/\r?\n/);
  if(!lines.length||!lines[0].trim())lines[0]='工程';
  const durationLine=/^\s*[1-9]\d{0,2}\s*(?:日間|営業日|日)\s*$/;
@@ -36,11 +46,20 @@ export function updateTaskDurationText(text, duration) {
  else lines.splice(1,0,String(value)+'日');
  return lines.join('\n');
 }
-function firstLine(text){return String(text||'').trim().split(/\n/)[0].replace(/\s*[（(]?\d+\s*(?:営業日|日間|日|days?)[)）]?\s*$/i,'').trim()}
+function firstLine(text){const line=String(text??'').trim().split(/\n/)[0];if(hasPartialDay(line))return line;return line.replace(/\s*[（(]?\d+\s*(?:営業日|日間|日|days?)[)）]?\s*$/i,'').trim()}
 export function extractDraft(nodes,edges){
- const candidates=nodes.filter(n=>n.type==='task'||(n.type==='text'&&durationFromText(n.text)!==null));
- const tasks=candidates.map((n,i)=>{const duration=Number.isInteger(n.duration)&&n.duration>=1?n.duration:durationFromText(n.text);const title=firstLine(n.text)||`工程 ${i+1}`;return {id:n.id,sourceId:n.id,title,duration:duration??1,dependsOn:[],startDate:parseISO(n.startDate)?n.startDate:'',confidence:duration==null?0.55:0.98,reason:duration==null?'日数の指定がないため、仮に1日としています':'カードの文字から抽出',assignee:'',needsReview:duration==null};});
- const lookup=new Map(tasks.map(t=>[t.sourceId,t]));for(const e of edges){const target=lookup.get(e.to);if(target&&lookup.has(e.from)&&e.from!==e.to&&!target.dependsOn.includes(e.from))target.dependsOn.push(e.from)}
+ const candidates=nodes.filter(n=>n.type==='task'||(n.type==='text'&&(durationFromText(n.text)!==null||hasPartialDay(n.text))));
+ const tasks=candidates.map((n,i)=>{
+  const fractional=hasPartialDay(n.text),week=hasWeekDuration(n.text);
+  const parsed=durationFromText(n.text);
+  const provided=Number.isInteger(n.duration)&&n.duration>=1&&n.duration<=365?n.duration:null;
+  const duration=fractional?null:week?parsed:provided??parsed;
+  const needsReview=fractional||week||duration==null;
+  const reason=fractional?'半日・小数日数には未対応です。整数日へ修正してください':week?'週表記を暦日換算しました。休工日設定と工期を確認してください':duration==null?'日数の指定がないため、仮に1日としています':'カードの文字から抽出';
+  return {id:n.id,sourceId:n.id,title:firstLine(n.text)||'工程 '+(i+1),duration:duration??1,durationUnit:week?'calendar':'workdays',invalidDuration:fractional||week,dependsOn:[],startDate:parseISO(n.startDate)?n.startDate:'',confidence:needsReview?0.55:0.98,reason,assignee:'',needsReview};
+ });
+ const lookup=new Map(tasks.map(t=>[t.sourceId,t]));
+ for(const e of edges){const target=lookup.get(e.to);if(target&&lookup.has(e.from)&&e.from!==e.to&&!target.dependsOn.includes(e.from))target.dependsOn.push(e.from)}
  return tasks;
 }
 export function normalizeAiDraft(aiTasks,nodes,edges){
@@ -50,7 +69,7 @@ export function normalizeAiDraft(aiTasks,nodes,edges){
  for(const item of aiTasks.slice(0,80)){
   const sourceId=String(item.sourceId||'');if(!allowed.has(sourceId)||used.has(sourceId))continue;used.add(sourceId);
   const title=String(item.title||'').trim().slice(0,100);if(!title)continue;
-  const parsedDuration=Number(item.duration);const validDuration=Number.isInteger(parsedDuration)&&parsedDuration>=1&&parsedDuration<=180;
+  const parsedDuration=Number(item.duration);const validDuration=Number.isInteger(parsedDuration)&&parsedDuration>=1&&parsedDuration<=365;
   const confidence=Math.max(0,Math.min(1,Number(item.confidence)||0));
   const dependsOn=Array.isArray(item.dependsOn)?item.dependsOn.filter(v=>typeof v==='string'&&v!==sourceId):[];
   const validStartDate=parseISO(String(item.startDate||''));
@@ -91,7 +110,7 @@ export function scheduleTasks(rawTasks, projectStartISO, calendar){
  const map=new Map(valid.map(t=>[t.id,t]));const resolving=new Set(),resolved=new Map(),warnings=[];
  function visit(id){if(resolved.has(id))return resolved.get(id);const t=map.get(id);if(!t)return null;if(resolving.has(id)){warnings.push(`依存関係が循環しています: ${t.title}`);return null}resolving.add(id);let start=projectStart;for(const dep of t.dependsOn){if(!map.has(dep)){warnings.push(`${t.title}: 不明な先行工程があります`);continue}const prev=visit(dep);if(prev){const next=nextWorkingDay(addDays(prev.end,1),workCalendar);if(next>start)start=next}}
  if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else start=t.startDate}
- const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const newStart=nextWorkingDay(start,workCalendar);if(start!==newStart)warnings.push(`${t.title}: 休工日なので開始日を${newStart}に調整しました`);start=newStart;const out={...t,duration,start,end:workdayEnd(start,duration,workCalendar),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
+ const validDuration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=365;const duration=validDuration?t.duration:1;if(!validDuration)warnings.push(`${t.title}: 工期が対応範囲外のため仮に1日としています。編集して確認してください`);const newStart=nextWorkingDay(start,workCalendar);if(start!==newStart)warnings.push(`${t.title}: 休工日なので開始日を${newStart}に調整しました`);start=newStart;const out={...t,duration,start,end:t.durationUnit==='calendar'?addDays(start,duration-1):workdayEnd(start,duration,workCalendar),invalidDuration:!!t.invalidDuration||!validDuration,needsReview:!!t.needsReview||!validDuration};resolving.delete(id);resolved.set(id,out);return out}
  for(const t of valid)visit(t.id);
  return {tasks:valid.map(t=>resolved.get(t.id)).filter(Boolean),warnings,projectStart};
 }
