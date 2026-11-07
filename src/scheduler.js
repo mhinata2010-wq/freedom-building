@@ -33,7 +33,7 @@ export function scheduleTasks(rawTasks, projectStartISO){
  const valid=rawTasks.map(t=>({...t,dependsOn:[...new Set(Array.isArray(t.dependsOn)?t.dependsOn:[])]}));
  const map=new Map(valid.map(t=>[t.id,t]));const resolving=new Set(),resolved=new Map(),warnings=[];
  function visit(id){if(resolved.has(id))return resolved.get(id);const t=map.get(id);if(!t)return null;if(resolving.has(id)){warnings.push(`依存関係が循環しています: ${t.title}`);return null}resolving.add(id);let start=projectStart;for(const dep of t.dependsOn){if(!map.has(dep)){warnings.push(`${t.title}: 不明な先行工程があります`);continue}const prev=visit(dep);if(prev){const next=addDays(prev.end,1);if(next>start)start=next}}
- if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else if(t.startDate>start)start=t.startDate}
+ if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else start=t.startDate}
  const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const out={...t,duration,start,end:addDays(start,duration-1),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
  for(const t of valid)visit(t.id);
  return {tasks:valid.map(t=>resolved.get(t.id)).filter(Boolean),warnings,projectStart};
