@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {addDays,durationFromText,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,groupInkStrokes,normalizeWorkCalendar,isWorkingDay} from '../src/scheduler.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {addDays,durationFromText,extractDraft,normalizeAiDraft,scheduleTasks,scheduleToCSV,groupInkStrokes,normalizeWorkCalendar,isWorkingDay,updateTaskDurationText,validateScheduleDependencies} from '../src/scheduler.js';
 test('duration recognizes Japanese and English durations',()=>{assert.equal(durationFromText('基礎工事 ３日'),3);assert.equal(durationFromText('配線 2営業日'),2);assert.equal(durationFromText('inspection 4 days'),4);assert.equal(durationFromText('検査'),null)});
 test('dates handle month end and leap day',()=>{assert.equal(addDays('2028-02-28',1),'2028-02-29');assert.equal(addDays('2026-11-30',1),'2026-12-01')});
 test('extracts structured cards and explicit arrows only',()=>{const n=[{id:'a',type:'task',text:'基礎工事\n3日'},{id:'b',type:'task',text:'配線\n2日'},{id:'c',type:'note',text:'雨天に注意'}];const t=extractDraft(n,[{from:'a',to:'b'}]);assert.equal(t.length,2);assert.deepEqual(t[1].dependsOn,['a']);assert.equal(t[0].duration,3)});
@@ -26,4 +26,49 @@ test('start on a holiday is adjusted with warning and no workday is rejected',()
  const s=scheduleTasks([{id:'a',title:'A',duration:1,dependsOn:[],startDate:'2026-11-08'}],'2026-11-07',{workdays:[1,2,3,4,5,6]});
  assert.equal(s.tasks[0].start,'2026-11-09');assert.ok(s.warnings.some(w=>w.includes('休工日')));
  assert.throws(()=>scheduleTasks([], '2026-11-07',{workdays:[]}),/稼働日/);
+});
+
+test('updating duration keeps all task memo lines',()=>{
+ const original='基礎工事\n4日\n搬入は午前のみ\n安全確認\n';
+ const updated=updateTaskDurationText(original,5);
+ assert.equal(updated,'基礎工事\n5日\n搬入は午前のみ\n安全確認\n');
+});
+test('insert duration when task has memo but no duration line',()=>{
+ assert.equal(updateTaskDurationText('建方\n職人手配済み\n雨天延期',2),'建方\n2日\n職人手配済み\n雨天延期');
+});
+test('do not replace duration figures embedded in notes',()=>{
+ assert.equal(updateTaskDurationText('内装\n搬入は3日前に連絡',4),'内装\n4日\n搬入は3日前に連絡');
+});
+test('reject invalid values and preserve blank memo lines',()=>{
+ assert.throws(()=>updateTaskDurationText('工程',181),RangeError);
+ assert.equal(updateTaskDurationText('工事\n\n要確認',1),'工事\n1日\n\n要確認');
+});
+
+
+test('CSV export prevents formula-starting title, assignee and dependency fields',()=>{
+ const tasks=[
+  {id:'a',title:'=1+1',duration:1,start:'2026-11-09',end:'2026-11-09',dependsOn:[],assignee:' @manager',confirmed:false,needsReview:false},
+  {id:'b',title:'+内装工事',duration:2,start:'2026-11-10',end:'2026-11-11',dependsOn:['a'],assignee:'-作業担当',confirmed:true,needsReview:false},
+  {id:'c',title:'通常工事',duration:1,start:'2026-11-12',end:'2026-11-12',dependsOn:['b'],assignee:'=1+1',confirmed:true,needsReview:false}
+ ];
+ const csv=scheduleToCSV(tasks);
+ assert.equal(csv.charCodeAt(0),0xFEFF);
+ for(const value of ["'=1+1","' @manager","'+内装工事","'-作業担当"]) assert.ok(csv.includes(value),value);
+ assert.ok(csv.includes('"要確認"'));
+});
+
+test('CSV quoting and ordinary schedule fields are preserved',()=>{
+ const csv=scheduleToCSV([{id:'z',title:'キッチン,"A"\n修理',duration:2,start:'2026-11-09',end:'2026-11-10',dependsOn:[],assignee:'施工班',confirmed:true,needsReview:false}]);
+ assert.ok(csv.includes('"キッチン,""A""\n修理"'));
+ assert.ok(csv.includes('"2026-11-09"'));
+ assert.ok(csv.includes('"施工班"'));
+ assert.ok(csv.endsWith(String.fromCharCode(13,10)));
+});
+test('dependency validation blocks cycles, missing references and duplicate IDs',()=>{
+ const t=(id,dependsOn=[])=>({id,title:id,duration:1,dependsOn});
+ assert.deepEqual(validateScheduleDependencies([t('a'),t('b',['a'])]),[]);
+ assert.ok(validateScheduleDependencies([t('a',['b']),t('b',['a'])]).some(s=>s.includes('循環')));
+ assert.ok(validateScheduleDependencies([t('a',['b']),t('b',['c']),t('c',['a'])]).some(s=>s.includes('循環')));
+ assert.ok(validateScheduleDependencies([t('a',['missing'])]).some(s=>s.includes('存在しない')));
+ assert.ok(validateScheduleDependencies([t('a'),t('a')]).some(s=>s.includes('重複')));
 });
