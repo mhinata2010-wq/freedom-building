@@ -25,6 +25,17 @@ export function workdayEnd(start,duration,calendar){
  return end;
 }
 export function durationFromText(text) {const v=String(text||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));const match=v.match(/(?:^|[^0-9])([1-9]\d{0,2})\s*(?:営業日|日間|日|days?|d\b)/i);return match?Math.min(Number(match[1]),180):null}
+export function updateTaskDurationText(text, duration) {
+ const value=Number(duration);
+ if(!Number.isInteger(value)||value<1||value>180)throw new RangeError('工期は1〜180日で入力してください');
+ const lines=String(text??'').split(/\r?\n/);
+ if(!lines.length||!lines[0].trim())lines[0]='工程';
+ const durationLine=/^\s*[1-9]\d{0,2}\s*(?:日間|営業日|日)\s*$/;
+ const index=lines.findIndex((line,i)=>i>0&&durationLine.test(line));
+ if(index>=0)lines[index]=String(value)+'日';
+ else lines.splice(1,0,String(value)+'日');
+ return lines.join('\n');
+}
 function firstLine(text){return String(text||'').trim().split(/\n/)[0].replace(/\s*[（(]?\d+\s*(?:営業日|日間|日|days?)[)）]?\s*$/i,'').trim()}
 export function extractDraft(nodes,edges){
  const candidates=nodes.filter(n=>n.type==='task'||(n.type==='text'&&durationFromText(n.text)!==null));
@@ -49,12 +60,37 @@ export function normalizeAiDraft(aiTasks,nodes,edges){
  for(const t of output){t.dependsOn=[...new Set(t.dependsOn)].filter(id=>ids.has(id));if(t.dependsOn.some(id=>!edgesSet.has(`${id}:${t.id}`))){t.needsReview=true;t.reason=[t.reason,'AIが推定した依存関係を要確認'].filter(Boolean).join(' / ')}}
  return output;
 }
+/** Block exporting schedules with broken or cyclic predecessor references. */
+export function validateScheduleDependencies(rawTasks) {
+ if (!Array.isArray(rawTasks)) return ['工程データが不正です'];
+ const byId=new Map(), errors=new Set();
+ for (const task of rawTasks) {
+  if (!task || typeof task.id!=='string' || !task.id.trim()) {errors.add('工程IDが不正です');continue}
+  if (byId.has(task.id)) errors.add(`工程IDが重複しています: ${task.id}`);
+  byId.set(task.id,task);
+ }
+ const done=new Set(), visiting=new Set();
+ function visit(id) {
+  if (visiting.has(id)) {errors.add(`先行工程が循環しています: ${byId.get(id)?.title||id}`);return}
+  if (done.has(id)) return;
+  visiting.add(id);
+  const task=byId.get(id);
+  for (const dep of Array.isArray(task.dependsOn)?task.dependsOn:[]) {
+   if (!byId.has(dep)) {errors.add(`存在しない先行工程: ${task.title||id} → ${dep}`);continue}
+   visit(dep);
+  }
+  visiting.delete(id);
+  done.add(id);
+ }
+ for (const id of byId.keys()) visit(id);
+ return [...errors];
+}
 export function scheduleTasks(rawTasks, projectStartISO, calendar){
  const projectStart=parseISO(projectStartISO)?projectStartISO:todayISO();const workCalendar=normalizeWorkCalendar(calendar);if(!workCalendar.workdays.length)throw new Error('稼働日を1日以上設定してください');
  const valid=rawTasks.map(t=>({...t,dependsOn:[...new Set(Array.isArray(t.dependsOn)?t.dependsOn:[])]}));
  const map=new Map(valid.map(t=>[t.id,t]));const resolving=new Set(),resolved=new Map(),warnings=[];
  function visit(id){if(resolved.has(id))return resolved.get(id);const t=map.get(id);if(!t)return null;if(resolving.has(id)){warnings.push(`依存関係が循環しています: ${t.title}`);return null}resolving.add(id);let start=projectStart;for(const dep of t.dependsOn){if(!map.has(dep)){warnings.push(`${t.title}: 不明な先行工程があります`);continue}const prev=visit(dep);if(prev){const next=nextWorkingDay(addDays(prev.end,1),workCalendar);if(next>start)start=next}}
- if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else if(t.startDate>start)start=t.startDate}
+ if(parseISO(t.startDate)){if(t.startDate<start&&t.dependsOn.length){warnings.push(`${t.title}: 指定開始日が先行工程と重複するため調整しました`)}else start=t.startDate}
  const duration=Number.isInteger(t.duration)&&t.duration>0&&t.duration<=180?t.duration:1;const newStart=nextWorkingDay(start,workCalendar);if(start!==newStart)warnings.push(`${t.title}: 休工日なので開始日を${newStart}に調整しました`);start=newStart;const out={...t,duration,start,end:workdayEnd(start,duration,workCalendar),needsReview:!!t.needsReview};resolving.delete(id);resolved.set(id,out);return out}
  for(const t of valid)visit(t.id);
  return {tasks:valid.map(t=>resolved.get(t.id)).filter(Boolean),warnings,projectStart};
@@ -76,4 +112,4 @@ export function groupInkStrokes(nodes){
   return {id,type:'ink',x,y,w:Math.max(...group.map(s=>s.maxX))-x,h:Math.max(...group.map(s=>s.maxY))-y,text:'',strokeIds:group.map(s=>s.id)}
  });
 }
-export function scheduleToCSV(tasks){const h=['工程名','日数','開始日','終了日','先行工程','担当者','要確認'];const map=new Map(tasks.map(t=>[t.id,t.title]));const q=v=>'"'+String(v??'').replaceAll('"','""')+'"';return '\ufeff'+[h,...tasks.map(t=>[t.title,t.duration,t.start,t.end,t.dependsOn.map(d=>map.get(d)||d).join(' / '),t.assignee,t.needsReview?'要確認':''])].map(row=>row.map(q).join(',')).join('\r\n')+'\r\n'}
+export function scheduleToCSV(tasks){const h=['工程名','日数','開始日','終了日','先行工程','担当者','要確認'];const map=new Map(tasks.map(t=>[t.id,t.title]));const q=v=>{const raw=String(v??'');const safe=/^[\s\u200B\uFEFF]*[=+@-]/u.test(raw)?"'"+raw:raw;return '"'+safe.replaceAll('"','""')+'"'};return '\ufeff'+[h,...tasks.map(t=>[t.title,t.duration,t.start,t.end,t.dependsOn.map(d=>map.get(d)||d).join(' / '),t.assignee,(t.confirmed!==true||t.needsReview===true)?'要確認':''])].map(row=>row.map(q).join(',')).join('\r\n')+'\r\n'}
