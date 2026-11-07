@@ -15,17 +15,17 @@ test('CSV export prevents formula-starting title, assignee and dependency fields
   {id:'c',title:'通常工事',duration:1,start:'2026-11-12',end:'2026-11-12',dependsOn:['b'],assignee:'=1+1',confirmed:true,needsReview:false}
  ];
  const csv=scheduleToCSV(tasks);
- assert.ok(csv.startsWith('\\ufeff'));
+ assert.equal(csv.charCodeAt(0),0xFEFF);
  for(const value of ["'=1+1","' @manager","'+内装工事","'-作業担当"]) assert.ok(csv.includes(value),value);
  assert.ok(csv.includes('"要確認"'));
 });
 
 test('CSV quoting and ordinary schedule fields are preserved',()=>{
- const csv=scheduleToCSV([{id:'z',title:'キッチン,"A"\\n修理',duration:2,start:'2026-11-09',end:'2026-11-10',dependsOn:[],assignee:'施工班',confirmed:true,needsReview:false}]);
- assert.ok(csv.includes('"キッチン,""A""\\n修理"'));
+ const csv=scheduleToCSV([{id:'z',title:'キッチン,"A"\n修理',duration:2,start:'2026-11-09',end:'2026-11-10',dependsOn:[],assignee:'施工班',confirmed:true,needsReview:false}]);
+ assert.ok(csv.includes('"キッチン,""A""\n修理"'));
  assert.ok(csv.includes('"2026-11-09"'));
  assert.ok(csv.includes('"施工班"'));
- assert.ok(csv.endsWith('\\r\\n'));
+ assert.ok(csv.endsWith(String.fromCharCode(13,10)));
 });
 test('dependency validation blocks cycles, missing references and duplicate IDs',()=>{
  const t=(id,dependsOn=[])=>({id,title:id,duration:1,dependsOn});
