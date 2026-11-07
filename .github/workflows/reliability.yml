@@ -1,0 +1,33 @@
+name: FIELDNOTE quality gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - integration/fieldnote-reliability-gate
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fieldnote-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Node checks and regression suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify syntax
+        run: npm run check
+      - name: Run all tests
+        run: npm test
